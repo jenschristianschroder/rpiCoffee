@@ -73,7 +73,7 @@ async def _auto_trigger_loop():
                 # stream_capture() yields batches until flag==2, then resets flag→0.
                 all_sensor_data: list[dict[str, float]] = []
                 t0: float | None = None
-                async for batch in picoquake_reader.stream_capture(batch_interval=0.3):
+                async for batch in picoquake_reader.stream_capture(batch_interval=0.3, auto_reset=False):
                     if not batch:
                         continue
                     # Normalise elapsed_s so chart starts at t=0
@@ -97,6 +97,11 @@ async def _auto_trigger_loop():
 
                 result = await run_pipeline(sensor_data=all_sensor_data, on_progress=_progress)
                 result.pop("sensor_data", None)  # already streamed to chart
+
+                # Re-arm the sensor now that the pipeline is done
+                if picoquake_reader._ring is not None:
+                    picoquake_reader._ring.recording_flag = 0
+                    logger.info("Auto-trigger: sensor re-armed")
 
                 _broadcast({"type": "result", "data": result})
                 logger.info("Auto-trigger pipeline complete: %s", result.get("label"))

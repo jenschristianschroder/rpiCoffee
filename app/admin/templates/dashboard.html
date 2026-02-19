@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', checkServices);
                 </label>
                 <label for="SENSOR_FILTER_HZ">Low-Pass Filter (Hz)
                     <select id="SENSOR_FILTER_HZ" name="SENSOR_FILTER_HZ">
-                        {% for v in [42, 98, 184, 750] %}
+                        {% for v in [42, 84, 170, 734] %}
                         <option value="{{ v }}" {% if config['SENSOR_FILTER_HZ'] == v %}selected{% endif %}>{{ v }} Hz</option>
                         {% endfor %}
                     </select>

@@ -257,7 +257,7 @@ def main_acquisition():
     parser.add_argument("--gyro-range", type=int, default=500,
                         choices=[250, 500, 1000, 2000], help="Gyroscope range in dps")
     parser.add_argument("--filter-hz", type=int, default=42,
-                        choices=[42, 98, 184, 750],
+                        choices=[42, 84, 170, 734],
                         help="Low-pass filter cutoff in Hz")
     args = parser.parse_args()
 
@@ -300,9 +300,9 @@ def main_acquisition():
     }
     _FILTER_MAP = {
         42: picoquake.Filter.hz_42,
-        98: picoquake.Filter.hz_98,
-        184: picoquake.Filter.hz_184,
-        750: picoquake.Filter.hz_750,
+        84: picoquake.Filter.hz_84,
+        170: picoquake.Filter.hz_170,
+        734: picoquake.Filter.hz_734,
     }
 
     device.configure(

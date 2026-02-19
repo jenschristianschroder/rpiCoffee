@@ -280,12 +280,21 @@ class PicoQuakeReader:
         self._ring.recording_flag = 0
         return data
 
-    async def stream_capture(self, batch_interval: float = 0.1):
+    async def stream_capture(self, batch_interval: float = 0.1, auto_reset: bool = True):
         """
         Async generator that yields progressive batches during recording.
 
         Yields ``list[dict]`` approximately every *batch_interval* seconds.
         Final yield is the last batch when ``recording_flag == 2``.
+
+        Parameters
+        ----------
+        batch_interval : float
+            Seconds between read cycles.
+        auto_reset : bool
+            If True (default), reset recording_flag to 0 when done.
+            Set to False to keep flag at 2 so the caller controls when
+            the sensor is allowed to trigger again.
         """
         if not self._ring:
             raise RuntimeError("PicoQuake not connected")
@@ -310,7 +319,8 @@ class PicoQuakeReader:
                 if current_idx > last_read_idx:
                     arr = self._ring.snapshot_range(last_read_idx, current_idx - last_read_idx)
                     yield self._array_to_dicts(arr)
-                self._ring.recording_flag = 0
+                if auto_reset:
+                    self._ring.recording_flag = 0
                 return
 
             if flag == 0:
@@ -319,7 +329,8 @@ class PicoQuakeReader:
             await asyncio.sleep(batch_interval)
 
         logger.error("Stream capture timed out")
-        self._ring.recording_flag = 0
+        if auto_reset:
+            self._ring.recording_flag = 0
 
     # ── Data conversion ───────────────────────────────────────────
 
