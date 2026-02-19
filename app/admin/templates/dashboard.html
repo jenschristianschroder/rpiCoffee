@@ -8,14 +8,15 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
-    .max-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
-    .max-card { background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color);
-                border-radius: 8px; padding: 0.6rem 0.4rem; text-align: center; }
-    .max-card .lbl  { font-size: 0.7rem; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.5px; }
-    .max-card .val  { font-size: 1.3rem; font-weight: 700; font-family: monospace; }
-    .max-card.c0 .val { color: #ef4444; } .max-card.c1 .val { color: #f97316; }
-    .max-card.c2 .val { color: #eab308; } .max-card.c3 .val { color: #22c55e; }
-    .max-card.c4 .val { color: #3b82f6; } .max-card.c5 .val { color: #8b5cf6; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem; }
+    .stat-card { background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color);
+                border-radius: 8px; padding: 0.5rem 0.3rem; text-align: center; }
+    .stat-card .lbl  { font-size: 0.65rem; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-card .val  { font-size: 1.1rem; font-weight: 700; font-family: monospace; }
+    .stat-card.c0 .val { color: #ef4444; } .stat-card.c1 .val { color: #f97316; }
+    .stat-card.c2 .val { color: #eab308; } .stat-card.c3 .val { color: #22c55e; }
+    .stat-card.c4 .val { color: #3b82f6; } .stat-card.c5 .val { color: #8b5cf6; }
+    .stat-card .val.rms { font-size: 1.0rem; }
     .live-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
     .live-header h3 { margin: 0; }
     .live-controls { display: flex; gap: 0.5rem; align-items: center; }
@@ -28,7 +29,7 @@
     .live-dot.on { animation: pulse-dot 1.2s ease-in-out infinite; }
     .chart-wrap { position: relative; height: 280px; margin-bottom: 0.5rem; }
     .stream-meta { font-size: 0.8rem; color: var(--pico-muted-color); text-align: right; }
-    @media (max-width: 700px) { .max-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
 </style>
 <script>
 async function checkServices() {
@@ -173,6 +174,15 @@ let streamT0 = null;
 let neutralizeGravity = false;
 const maxVals = {};
 KEYS.forEach(function(k) { maxVals[k] = 0; });
+let accelRms = 0;
+let RMS_WINDOW_S = {{ config['SENSOR_RMS_WINDOW_S'] }};
+let VIBRATION_THRESHOLD = {{ config['SENSOR_VIBRATION_THRESHOLD'] }};
+let SAMPLE_RATE = {{ config['SENSOR_SAMPLE_RATE_HZ'] }};
+
+function updateRmsLabel() {
+    var el = document.getElementById('accel-rms-lbl');
+    if (el) el.innerHTML = 'Accel RMS <small>(' + RMS_WINDOW_S + 's, thr\u00a0' + VIBRATION_THRESHOLD + 'g)</small>';
+}
 
 function createLiveChart() {
     const ctx = document.getElementById('live-chart').getContext('2d');
@@ -226,11 +236,44 @@ function createLiveChart() {
     });
 }
 
-function updateMaxDisplay() {
+function computeRms() {
+    // Compute RMS of accelerometer magnitude over the RMS window,
+    // matching the trigger logic in picoquake_acq.py:
+    //   mag = sqrt(acc_x² + acc_y² + acc_z²)
+    //   rms = sqrt(mean(mag²))  over rms_window_size samples
+    if (!liveChart || !_accEnabled) { accelRms = 0; return; }
+    var axIdx = KEYS.indexOf('acc_x'), ayIdx = KEYS.indexOf('acc_y'), azIdx = KEYS.indexOf('acc_z');
+    if (axIdx < 0 || ayIdx < 0 || azIdx < 0) { accelRms = 0; return; }
+    var dsx = liveChart.data.datasets[axIdx].data;
+    var dsy = liveChart.data.datasets[ayIdx].data;
+    var dsz = liveChart.data.datasets[azIdx].data;
+    var n = dsx.length;
+    if (n === 0) { accelRms = 0; return; }
+    // Use last rms_window_size samples (based on sample rate)
+    var windowSamples = Math.max(1, Math.round(RMS_WINDOW_S * SAMPLE_RATE));
+    var start = Math.max(0, n - windowSamples);
+    var sum2 = 0, count = 0;
+    for (var j = start; j < n; j++) {
+        var rx = dsx[j]._raw !== undefined ? dsx[j]._raw : dsx[j].y;
+        var ry = dsy[j]._raw !== undefined ? dsy[j]._raw : dsy[j].y;
+        var rz = dsz[j]._raw !== undefined ? dsz[j]._raw : dsz[j].y;
+        var mag2 = rx * rx + ry * ry + rz * rz;
+        sum2 += mag2;
+        count++;
+    }
+    accelRms = Math.sqrt(sum2 / count);
+}
+
+function updateStatsDisplay() {
     KEYS.forEach(k => {
-        const el = document.getElementById('max-' + k);
-        if (el) el.textContent = maxVals[k].toFixed(3);
+        const maxEl = document.getElementById('max-' + k);
+        if (maxEl) maxEl.textContent = maxVals[k].toFixed(3);
     });
+    const rmsEl = document.getElementById('accel-rms');
+    if (rmsEl) {
+        rmsEl.textContent = accelRms.toFixed(4);
+        rmsEl.style.color = accelRms > VIBRATION_THRESHOLD ? '#ef4444' : '#22c55e';
+    }
 }
 
 function resetMax() {
@@ -244,7 +287,8 @@ function resetMax() {
             });
         });
     }
-    updateMaxDisplay();
+    computeRms();
+    updateStatsDisplay();
 }
 
 function toggleGravity() {
@@ -262,7 +306,8 @@ function toggleGravity() {
         const abs = Math.abs(pt.y);
         if (abs > maxVals['acc_z']) maxVals['acc_z'] = abs;
     });
-    updateMaxDisplay();
+    computeRms();
+    updateStatsDisplay();
     liveChart.update('none');
 }
 
@@ -315,7 +360,8 @@ function connectStream() {
         liveChart.options.scales.x.max = latest;
         liveChart.update('none');
 
-        updateMaxDisplay();
+        computeRms();
+        updateStatsDisplay();
         document.getElementById('live-dot').className = 'live-dot on';
         document.getElementById('live-label').textContent = 'Live';
         document.getElementById('sample-count').textContent = liveChart.data.datasets[0].data.length;
@@ -383,6 +429,15 @@ async function saveSensorConfig(e) {
         const newWindow = parseInt(body['SENSOR_CHART_WINDOW_S']);
         if (newWindow > 0) WINDOW_S = newWindow;
 
+        // Update RMS parameters from saved values
+        const newRmsWindow = parseFloat(body['SENSOR_RMS_WINDOW_S']);
+        if (newRmsWindow > 0) RMS_WINDOW_S = newRmsWindow;
+        const newThreshold = parseFloat(body['SENSOR_VIBRATION_THRESHOLD']);
+        if (newThreshold > 0) VIBRATION_THRESHOLD = newThreshold;
+        const newRate = parseInt(body['SENSOR_SAMPLE_RATE_HZ']);
+        if (newRate > 0) SAMPLE_RATE = newRate;
+        updateRmsLabel();
+
         const r2 = await fetch('/api/sensor/restart', { method: 'POST' });
         if (!r2.ok) throw new Error('Restart failed');
         status.textContent = '✓ Sensor restarted';
@@ -413,6 +468,7 @@ setInterval(checkServices, 10000);
 document.addEventListener('DOMContentLoaded', function() {
     checkServices();
     createLiveChart();
+    updateRmsLabel();
     connectStream();
 });
 </script>
@@ -481,17 +537,20 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
     </div>
 
-    <!-- Max values -->
-    <div class="max-grid">
+    <!-- Stats: Max + RMS -->
+    <div class="stats-grid">
         {% if config['SENSOR_ACC_ENABLED'] %}
-        <div class="max-card c0"><div class="lbl">Acc X max</div><div class="val" id="max-acc_x">0.000</div></div>
-        <div class="max-card c1"><div class="lbl">Acc Y max</div><div class="val" id="max-acc_y">0.000</div></div>
-        <div class="max-card c2"><div class="lbl">Acc Z max</div><div class="val" id="max-acc_z">0.000</div></div>
+        <div class="stat-card c0"><div class="lbl">Acc X max</div><div class="val" id="max-acc_x">0.000</div></div>
+        <div class="stat-card c1"><div class="lbl">Acc Y max</div><div class="val" id="max-acc_y">0.000</div></div>
+        <div class="stat-card c2"><div class="lbl">Acc Z max</div><div class="val" id="max-acc_z">0.000</div></div>
         {% endif %}
         {% if config['SENSOR_GYRO_ENABLED'] %}
-        <div class="max-card c3"><div class="lbl">Gyro X max</div><div class="val" id="max-gyro_x">0.000</div></div>
-        <div class="max-card c4"><div class="lbl">Gyro Y max</div><div class="val" id="max-gyro_y">0.000</div></div>
-        <div class="max-card c5"><div class="lbl">Gyro Z max</div><div class="val" id="max-gyro_z">0.000</div></div>
+        <div class="stat-card c3"><div class="lbl">Gyro X max</div><div class="val" id="max-gyro_x">0.000</div></div>
+        <div class="stat-card c4"><div class="lbl">Gyro Y max</div><div class="val" id="max-gyro_y">0.000</div></div>
+        <div class="stat-card c5"><div class="lbl">Gyro Z max</div><div class="val" id="max-gyro_z">0.000</div></div>
+        {% endif %}
+        {% if config['SENSOR_ACC_ENABLED'] %}
+        <div class="stat-card"><div class="lbl" id="accel-rms-lbl">Accel RMS</div><div class="val rms" id="accel-rms" style="color:#22c55e;">0.0000</div></div>
         {% endif %}
     </div>
     <div style="text-align:center;margin-bottom:0.5rem;">
@@ -524,7 +583,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
         <div class="grid">
             <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
-                <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.001">
+                <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.0001">
             </label>
             <label for="SENSOR_RMS_WINDOW_S">RMS Window (s)
                 <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
