@@ -1,4 +1,4 @@
-"""HTTP client for the locallm text generation service."""
+"""HTTP client for the LLM text generation service."""
 
 from __future__ import annotations
 
@@ -15,17 +15,17 @@ _TIMEOUT = 30.0
 
 
 class LLMClient:
-    """Calls locallm /generate and /health endpoints."""
+    """Calls LLM /generate and /health endpoints."""
 
     @staticmethod
     async def health() -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(f"{config.LOCALLM_ENDPOINT}/health")
+                r = await client.get(f"{config.LLM_ENDPOINT}/health")
                 r.raise_for_status()
                 return {"enabled": True, "healthy": True, **r.json()}
         except Exception as exc:
-            logger.warning("locallm health check failed: %s", exc)
+            logger.warning("LLM health check failed: %s", exc)
             return {"enabled": True, "healthy": False, "error": str(exc)}
 
     @staticmethod
@@ -47,8 +47,8 @@ class LLMClient:
         -------
         dict with 'response', 'tokens', 'elapsed_s', 'tokens_per_s', or None on failure.
         """
-        if not config.LOCALLM_ENABLED:
-            logger.info("locallm is disabled – skipping text generation")
+        if not config.LLM_ENABLED:
+            logger.info("LLM is disabled – skipping text generation")
             return None
 
         if timestamp is None:
@@ -69,7 +69,7 @@ class LLMClient:
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 r = await client.post(
-                    f"{config.LOCALLM_ENDPOINT}/generate",
+                    f"{config.LLM_ENDPOINT}/generate",
                     json={
                         "prompt": prompt,
                         "max_tokens": max_tokens,
@@ -83,5 +83,5 @@ class LLMClient:
                 logger.info("LLM generated %d tokens in %.2fs", result.get("tokens", 0), result.get("elapsed_s", 0))
                 return result
         except Exception as exc:
-            logger.error("locallm generate failed: %s", exc)
+            logger.error("LLM generate failed: %s", exc)
             return None

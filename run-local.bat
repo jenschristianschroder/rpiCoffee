@@ -20,26 +20,23 @@ echo ========================================
 echo.
 
 REM Override endpoints for local development
-set LOCALLM_ENDPOINT=http://localhost:8000
-set LOCALTTS_ENDPOINT=http://localhost:5000
-set LOCALML_ENDPOINT=http://localhost:8001
+set CLASSIFIER_ENDPOINT=http://localhost:8001
+set LLM_ENDPOINT=http://localhost:8000
+set TTS_ENDPOINT=http://localhost:5000
 set REMOTE_SAVE_ENDPOINT=http://localhost:7000
 set SENSOR_MOCK_ENABLED=true
 set SETTINGS_DIR=%ROOT%data
 set DATA_DIR=%ROOT%data
 
-echo [*] Starting remote_save_mock on port 7000...
-start "remotesave-mock" cmd /k "cd /d %ROOT%remote_save_mock && call %VENV% && uvicorn main:app --host 0.0.0.0 --port 7000 --reload"
+echo [*] Starting classifier (mock) on port 8001...
+start "classifier" cmd /k "cd /d %ROOT%services\classifier && call %VENV% && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
 
-echo [*] Starting localml_mock on port 8001...
-start "localml-mock" cmd /k "cd /d %ROOT%localml_mock && call %VENV% && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
-
-echo [*] Starting locallm_mock on port 8000...
-start "locallm-mock" cmd /k "cd /d %ROOT%locallm_mock && call %VENV% && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+echo [*] Starting LLM on port 8000...
+start "llm" cmd /k "cd /d %ROOT%services\llm && call %VENV% && python server.py --port 8000"
 
 echo [*] Starting main app on port 8080...
 timeout /t 2 >nul
-start "rpicoffee-app" cmd /k "cd /d %ROOT%app && call %VENV% && set LOCALLM_ENDPOINT=http://localhost:8000 && set LOCALTTS_ENDPOINT=http://localhost:5000 && set LOCALML_ENDPOINT=http://localhost:8001 && set REMOTE_SAVE_ENDPOINT=http://localhost:7000 && set SENSOR_MOCK_ENABLED=true && set SETTINGS_DIR=%ROOT%data && set DATA_DIR=%ROOT%data && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+start "rpicoffee-app" cmd /k "cd /d %ROOT%app && call %VENV% && set CLASSIFIER_ENDPOINT=http://localhost:8001 && set LLM_ENDPOINT=http://localhost:8000 && set TTS_ENDPOINT=http://localhost:5000 && set REMOTE_SAVE_ENDPOINT=http://localhost:7000 && set SENSOR_MOCK_ENABLED=true && set SETTINGS_DIR=%ROOT%data && set DATA_DIR=%ROOT%data && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
 
 echo.
 echo ========================================
@@ -47,11 +44,10 @@ echo   All services starting!
 echo ========================================
 echo.
 echo   Admin UI:     http://localhost:8080/admin/
-echo   Password:     1234
-echo   localml:      http://localhost:8001/docs
-echo   locallm:      http://localhost:8000/docs
+echo   Classifier:   http://localhost:8001/docs
+echo   LLM:          http://localhost:8000/health
 echo.
-echo   Note: localtts is skipped locally (requires Piper/Linux).
+echo   Note: TTS is skipped locally (requires Piper/Linux).
 echo         The pipeline will run steps 1-2 and skip TTS.
 echo.
 echo   Press any key to close this launcher window.

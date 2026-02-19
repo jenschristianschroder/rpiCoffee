@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   # ── Main application (always starts) ───────────────────────────
@@ -13,6 +12,7 @@ services:
       - .env
     environment:
       - SETTINGS_DIR=/data
+      - DATA_DIR=/data
     volumes:
       - coffee-data:/data
       - ./data:/data/csv-defaults:ro
@@ -21,63 +21,63 @@ services:
     restart: unless-stopped
     depends_on: []
 
-  # ── localml – coffee classifier (mock) ─────────────────────────
-  localml:
+  # ── classifier – coffee drink classifier ───────────────────────
+  classifier:
     build:
-      context: ./localml_mock
+      context: ./services/classifier
       dockerfile: Dockerfile
-    container_name: rpicoffee-localml
+    container_name: rpicoffee-classifier
     ports:
       - "8001:8001"
     networks:
       - coffee-net
     restart: unless-stopped
     profiles:
-      - localml
+      - classifier
 
-  # ── locallm – text generation (mock) ───────────────────────────
-  locallm:
+  # ── llm – text generation ──────────────────────────────────────
+  llm:
     build:
-      context: ./locallm_mock
+      context: ./services/llm
       dockerfile: Dockerfile
-    container_name: rpicoffee-locallm
+    container_name: rpicoffee-llm
     ports:
       - "8000:8000"
     networks:
       - coffee-net
     restart: unless-stopped
     profiles:
-      - locallm
+      - llm
 
-  # ── localtts – text-to-speech (Piper) ──────────────────────────
-  localtts:
+  # ── tts – text-to-speech (Piper) ───────────────────────────────
+  tts:
     build:
-      context: ./localtts
+      context: ./services/tts
       dockerfile: Dockerfile
-    container_name: rpicoffee-localtts
+    container_name: rpicoffee-tts
     ports:
-      - "5000:5000"
+      - "5050:5000"
     networks:
       - coffee-net
     restart: unless-stopped
     profiles:
-      - localtts
+      - tts
 
-  # ── remotesave – brew result logger (mock) ────────────────
-  remotesave:
+  # ── remote-save – brew result persistence (Dataverse) ──────────
+  remote-save:
     build:
-      context: ./remote_save_mock
+      context: ./services/remote-save
       dockerfile: Dockerfile
-    container_name: rpicoffee-remotesave
+    container_name: rpicoffee-remote-save
     ports:
       - "7000:7000"
-    volumes:
-      - coffee-data:/data
+    env_file:
+      - ./services/remote-save/.env
     networks:
       - coffee-net
     restart: unless-stopped
     profiles:
-      - remotesave
+      - remote-save
 
 networks:
   coffee-net:

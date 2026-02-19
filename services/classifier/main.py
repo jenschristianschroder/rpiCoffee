@@ -1,8 +1,8 @@
 """
-localml mock – a fake coffee drink classifier.
+Coffee drink classifier (mock).
 
 Accepts IMU sensor data and returns a random classification.
-When a real ML model is ready, replace this container.
+When a real ML model is ready, replace this service.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import random
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="localml-mock", version="1.0.0")
+app = FastAPI(title="rpicoffee-classifier", version="1.0.0")
 
 _CONFIDENCE_THRESHOLD = 0.6
 _LABELS = ["black", "espresso", "cappuccino"]

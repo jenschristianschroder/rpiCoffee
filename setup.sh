@@ -28,35 +28,41 @@ fi
 # Copy CSV data files into the data volume on first run
 echo "[*] Ensuring data directory exists..."
 mkdir -p data
-for csv in *.csv; do
-    if [ -f "$csv" ] && [ ! -f "data/$csv" ]; then
-        echo "    Copying $csv → data/"
-        cp "$csv" "data/"
+for csv in data/*.csv; do
+    if [ -f "$csv" ]; then
+        echo "    Found $csv"
     fi
 done
 
 # Build profile flags based on enabled services
 PROFILES=""
 
-if [ "${LOCALML_ENABLED:-false}" = "true" ]; then
-    PROFILES="$PROFILES --profile localml"
-    echo "[+] localml   : ENABLED (${LOCALML_ENDPOINT:-http://localml:8001})"
+if [ "${CLASSIFIER_ENABLED:-false}" = "true" ]; then
+    PROFILES="$PROFILES --profile classifier"
+    echo "[+] classifier  : ENABLED (${CLASSIFIER_ENDPOINT:-http://classifier:8001})"
 else
-    echo "[-] localml   : disabled"
+    echo "[-] classifier  : disabled"
 fi
 
-if [ "${LOCALLM_ENABLED:-false}" = "true" ]; then
-    PROFILES="$PROFILES --profile locallm"
-    echo "[+] locallm   : ENABLED (${LOCALLM_ENDPOINT:-http://locallm:8000})"
+if [ "${LLM_ENABLED:-false}" = "true" ]; then
+    PROFILES="$PROFILES --profile llm"
+    echo "[+] llm         : ENABLED (${LLM_ENDPOINT:-http://llm:8000})"
 else
-    echo "[-] locallm   : disabled"
+    echo "[-] llm         : disabled"
 fi
 
-if [ "${LOCALTTS_ENABLED:-false}" = "true" ]; then
-    PROFILES="$PROFILES --profile localtts"
-    echo "[+] localtts  : ENABLED (${LOCALTTS_ENDPOINT:-http://localtts:5000})"
+if [ "${TTS_ENABLED:-false}" = "true" ]; then
+    PROFILES="$PROFILES --profile tts"
+    echo "[+] tts         : ENABLED (${TTS_ENDPOINT:-http://tts:5000})"
 else
-    echo "[-] localtts  : disabled"
+    echo "[-] tts         : disabled"
+fi
+
+if [ "${REMOTE_SAVE_ENABLED:-false}" = "true" ]; then
+    PROFILES="$PROFILES --profile remote-save"
+    echo "[+] remote-save : ENABLED (${REMOTE_SAVE_ENDPOINT:-http://remote-save:7000})"
+else
+    echo "[-] remote-save : disabled"
 fi
 
 echo ""
@@ -73,6 +79,5 @@ echo "  Deployment complete!"
 echo "========================================"
 echo ""
 echo "  Admin UI:  http://localhost:8080/admin/"
-echo "  Password:  ${ADMIN_PASSWORD:-1234}"
 echo ""
 docker compose $PROFILES ps

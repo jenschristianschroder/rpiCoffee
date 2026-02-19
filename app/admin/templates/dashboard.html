@@ -185,16 +185,16 @@ document.addEventListener('DOMContentLoaded', checkServices);
             <strong>sensor</strong> <small>(mock)</small>
         </div>
         <div>
-            <span id="status-localml" class="status-dot gray" title="Checking…"></span>
-            <strong>localml</strong> <small>(classifier)</small>
+            <span id="status-classifier" class="status-dot gray" title="Checking…"></span>
+            <strong>classifier</strong> <small>(coffee type)</small>
         </div>
         <div>
-            <span id="status-locallm" class="status-dot gray" title="Checking…"></span>
-            <strong>locallm</strong> <small>(text gen)</small>
+            <span id="status-llm" class="status-dot gray" title="Checking…"></span>
+            <strong>llm</strong> <small>(text gen)</small>
         </div>
         <div>
-            <span id="status-localtts" class="status-dot gray" title="Checking…"></span>
-            <strong>localtts</strong> <small>(TTS)</small>
+            <span id="status-tts" class="status-dot gray" title="Checking…"></span>
+            <strong>tts</strong> <small>(speech)</small>
         </div>
         <div>
             <span id="status-remote_save" class="status-dot gray" title="Checking…"></span>
@@ -223,40 +223,48 @@ document.addEventListener('DOMContentLoaded', checkServices);
 
 <!-- Settings -->
 <div class="card">
+    <h3>Change Password</h3>
+    <form method="post" action="/admin/password">
+        <div class="grid">
+            <label for="current_password">Current Password
+                <input type="password" id="current_password" name="current_password" required>
+            </label>
+            <label for="new_password">New Password
+                <input type="password" id="new_password" name="new_password" required minlength="4">
+            </label>
+        </div>
+        <button type="submit">Change Password</button>
+    </form>
+</div>
+
+<div class="card">
     <h3>Configuration</h3>
     <form method="post" action="/admin/settings">
 
         <fieldset>
-            <legend><strong>Admin</strong></legend>
-            <label for="ADMIN_PASSWORD">Password
-                <input type="password" id="ADMIN_PASSWORD" name="ADMIN_PASSWORD" value="{{ config['ADMIN_PASSWORD'] }}">
-            </label>
-        </fieldset>
-
-        <fieldset>
-            <legend><strong>localml</strong> – Coffee Classifier</legend>
+            <legend><strong>Classifier</strong> – Coffee Type</legend>
             <div class="grid">
                 <label>
                     Enabled
-                    <input type="checkbox" name="LOCALML_ENABLED" role="switch"
-                           {% if config['LOCALML_ENABLED'] %}checked{% endif %}>
+                    <input type="checkbox" name="CLASSIFIER_ENABLED" role="switch"
+                           {% if config['CLASSIFIER_ENABLED'] %}checked{% endif %}>
                 </label>
-                <label for="LOCALML_ENDPOINT">Endpoint
-                    <input type="text" id="LOCALML_ENDPOINT" name="LOCALML_ENDPOINT" value="{{ config['LOCALML_ENDPOINT'] }}">
+                <label for="CLASSIFIER_ENDPOINT">Endpoint
+                    <input type="text" id="CLASSIFIER_ENDPOINT" name="CLASSIFIER_ENDPOINT" value="{{ config['CLASSIFIER_ENDPOINT'] }}">
                 </label>
             </div>
         </fieldset>
 
         <fieldset>
-            <legend><strong>locallm</strong> – Text Generation</legend>
+            <legend><strong>LLM</strong> – Text Generation</legend>
             <div class="grid">
                 <label>
                     Enabled
-                    <input type="checkbox" name="LOCALLM_ENABLED" role="switch"
-                           {% if config['LOCALLM_ENABLED'] %}checked{% endif %}>
+                    <input type="checkbox" name="LLM_ENABLED" role="switch"
+                           {% if config['LLM_ENABLED'] %}checked{% endif %}>
                 </label>
-                <label for="LOCALLM_ENDPOINT">Endpoint
-                    <input type="text" id="LOCALLM_ENDPOINT" name="LOCALLM_ENDPOINT" value="{{ config['LOCALLM_ENDPOINT'] }}">
+                <label for="LLM_ENDPOINT">Endpoint
+                    <input type="text" id="LLM_ENDPOINT" name="LLM_ENDPOINT" value="{{ config['LLM_ENDPOINT'] }}">
                 </label>
             </div>
             <div class="grid">
@@ -280,15 +288,15 @@ document.addEventListener('DOMContentLoaded', checkServices);
         </fieldset>
 
         <fieldset>
-            <legend><strong>localtts</strong> – Text-to-Speech</legend>
+            <legend><strong>TTS</strong> – Text-to-Speech</legend>
             <div class="grid">
                 <label>
                     Enabled
-                    <input type="checkbox" name="LOCALTTS_ENABLED" role="switch"
-                           {% if config['LOCALTTS_ENABLED'] %}checked{% endif %}>
+                    <input type="checkbox" name="TTS_ENABLED" role="switch"
+                           {% if config['TTS_ENABLED'] %}checked{% endif %}>
                 </label>
-                <label for="LOCALTTS_ENDPOINT">Endpoint
-                    <input type="text" id="LOCALTTS_ENDPOINT" name="LOCALTTS_ENDPOINT" value="{{ config['LOCALTTS_ENDPOINT'] }}">
+                <label for="TTS_ENDPOINT">Endpoint
+                    <input type="text" id="TTS_ENDPOINT" name="TTS_ENDPOINT" value="{{ config['TTS_ENDPOINT'] }}">
                 </label>
             </div>
         </fieldset>

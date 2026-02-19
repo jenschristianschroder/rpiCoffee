@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from config import config
 from admin.router import router as admin_router
 from pipeline import run_pipeline, run_pipeline_streaming
-from services.ml_client import MLClient
+from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
 from services.tts_client import TTSClient
 from services.remote_save_client import RemoteSaveClient
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown hooks."""
     logger.info("rpiCoffee starting up")
     cfg = config.to_dict()
-    for svc in ("LOCALML", "LOCALLM", "LOCALTTS", "REMOTE_SAVE"):
+    for svc in ("CLASSIFIER", "LLM", "TTS", "REMOTE_SAVE"):
         enabled = cfg.get(f"{svc}_ENABLED", False)
         endpoint = cfg.get(f"{svc}_ENDPOINT", "n/a")
         logger.info("  %s: %s (%s)", svc, "enabled" if enabled else "disabled", endpoint)
@@ -68,7 +68,7 @@ async def index(request: Request):
 
 @app.post("/api/brew")
 async def brew():
-    """Run the full pipeline: sensor → localml → locallm → localtts."""
+    """Run the full pipeline: sensor → classifier → llm → tts."""
     result = await run_pipeline()
     return result
 
@@ -91,20 +91,20 @@ async def services_status():
     """Check health of all backend services."""
     statuses: dict[str, dict] = {}
 
-    if config.LOCALML_ENABLED:
-        statuses["localml"] = await MLClient.health()
+    if config.CLASSIFIER_ENABLED:
+        statuses["classifier"] = await ClassifierClient.health()
     else:
-        statuses["localml"] = {"enabled": False}
+        statuses["classifier"] = {"enabled": False}
 
-    if config.LOCALLM_ENABLED:
-        statuses["locallm"] = await LLMClient.health()
+    if config.LLM_ENABLED:
+        statuses["llm"] = await LLMClient.health()
     else:
-        statuses["locallm"] = {"enabled": False}
+        statuses["llm"] = {"enabled": False}
 
-    if config.LOCALTTS_ENABLED:
-        statuses["localtts"] = await TTSClient.health()
+    if config.TTS_ENABLED:
+        statuses["tts"] = await TTSClient.health()
     else:
-        statuses["localtts"] = {"enabled": False}
+        statuses["tts"] = {"enabled": False}
 
     if config.REMOTE_SAVE_ENABLED:
         statuses["remote_save"] = await RemoteSaveClient.health()

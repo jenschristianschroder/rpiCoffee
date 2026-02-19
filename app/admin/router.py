@@ -19,17 +19,16 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Keys that can be edited from the admin UI
 _EDITABLE_KEYS = [
-    "ADMIN_PASSWORD",
-    "LOCALLM_ENABLED", "LOCALLM_ENDPOINT",
-    "LOCALTTS_ENABLED", "LOCALTTS_ENDPOINT",
-    "LOCALML_ENABLED", "LOCALML_ENDPOINT",
+    "LLM_ENABLED", "LLM_ENDPOINT",
+    "TTS_ENABLED", "TTS_ENDPOINT",
+    "CLASSIFIER_ENABLED", "CLASSIFIER_ENDPOINT",
     "REMOTE_SAVE_ENABLED", "REMOTE_SAVE_ENDPOINT",
     "LLM_MAX_TOKENS", "LLM_TEMPERATURE", "LLM_TOP_P", "LLM_TTS",
     "SENSOR_MOCK_ENABLED", "SENSOR_SERIAL_PORT",
     "SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S",
 ]
 
-_BOOL_KEYS = {"LOCALLM_ENABLED", "LOCALTTS_ENABLED", "LOCALML_ENABLED", "SENSOR_MOCK_ENABLED", "LLM_TTS", "REMOTE_SAVE_ENABLED"}
+_BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_MOCK_ENABLED", "LLM_TTS", "REMOTE_SAVE_ENABLED"}
 
 
 def _get_signer() -> URLSafeSerializer:
@@ -55,7 +54,7 @@ async def login_page(request: Request, error: str = ""):
 
 @router.post("/login")
 async def login_submit(request: Request, password: str = Form(...)):
-    if password == str(config.ADMIN_PASSWORD):
+    if config.verify_password(password):
         response = RedirectResponse(url="/admin/", status_code=303)
         token = _get_signer().dumps({"authenticated": True})
         response.set_cookie(key="session", value=token, httponly=True, samesite="lax")
@@ -80,8 +79,9 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
         return RedirectResponse(url="/admin/login", status_code=303)
 
     cfg = config.to_dict()
-    # Don't show secret key in UI
+    # Don't show secrets in UI
     cfg.pop("SECRET_KEY", None)
+    cfg.pop("ADMIN_PASSWORD_HASH", None)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -113,3 +113,26 @@ async def update_settings(request: Request, session: str | None = Cookie(default
     logger.info("Settings updated: %s", list(updates.keys()))
 
     return RedirectResponse(url="/admin/?message=Settings+saved", status_code=303)
+
+
+# ── Password change ──────────────────────────────────────────
+
+@router.post("/password")
+async def change_password(
+    request: Request,
+    session: str | None = Cookie(default=None),
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+):
+    if not _verify_session(session):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    if not config.verify_password(current_password):
+        return RedirectResponse(url="/admin/?message=Current+password+is+incorrect", status_code=303)
+
+    if len(new_password) < 4:
+        return RedirectResponse(url="/admin/?message=Password+must+be+at+least+4+characters", status_code=303)
+
+    config.set_password(new_password)
+    logger.info("Admin password changed")
+    return RedirectResponse(url="/admin/?message=Password+changed", status_code=303)

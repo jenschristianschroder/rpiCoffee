@@ -90,7 +90,7 @@ class RemoteSaveClient:
                 )
                 r.raise_for_status()
                 resp = r.json()
-                logger.info("Remote save successful: %s", resp.get("id", "?"))
+                logger.info("Remote save successful: %s", resp.get("record_id", resp.get("id", "?")))
                 return True
         except Exception as exc:
             logger.error("remote_save failed: %s", exc)

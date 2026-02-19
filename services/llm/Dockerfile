@@ -13,11 +13,14 @@
 
 FROM python:3.11-slim-bookworm
 
+ENV CMAKE_ARGS="-DGGML_BLAS=OFF"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential cmake \
+        build-essential cmake git libgomp1 \
     && pip install --no-cache-dir llama-cpp-python==0.3.8 \
-    && apt-get purge -y build-essential cmake \
+    && apt-get purge -y build-essential cmake git \
     && apt-get autoremove -y \
+    && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
