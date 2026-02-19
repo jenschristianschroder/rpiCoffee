@@ -22,6 +22,29 @@ logger = logging.getLogger("rpicoffee.sensor.reader")
 _FIELDS = ("elapsed_s", "acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z")
 _CLASSIFICATION_FIELDS = ("acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z")
 
+_ACC_KEYS = ("acc_x", "acc_y", "acc_z")
+_GYRO_KEYS = ("gyro_x", "gyro_y", "gyro_z")
+
+
+def filter_sensor_channels(data: list[dict[str, float]]) -> list[dict[str, float]]:
+    """Zero-out disabled sensor channels based on config settings.
+
+    When SENSOR_ACC_ENABLED is False, acc_x/y/z values are set to 0.
+    When SENSOR_GYRO_ENABLED is False, gyro_x/y/z values are set to 0.
+    """
+    acc_enabled = config.SENSOR_ACC_ENABLED
+    gyro_enabled = config.SENSOR_GYRO_ENABLED
+    if acc_enabled and gyro_enabled:
+        return data
+    for sample in data:
+        if not acc_enabled:
+            for k in _ACC_KEYS:
+                sample[k] = 0.0
+        if not gyro_enabled:
+            for k in _GYRO_KEYS:
+                sample[k] = 0.0
+    return data
+
 
 async def read_sensor(port: str | None = None) -> list[dict[str, float]]:
     """
@@ -70,7 +93,7 @@ async def read_sensor(port: str | None = None) -> list[dict[str, float]]:
     data = await loop.run_in_executor(None, _blocking_read, serial_port, expected_samples)
 
     logger.info("Sensor read complete: %d samples collected", len(data))
-    return data
+    return filter_sensor_channels(data)
 
 
 async def _read_from_mock_buffer() -> list[dict[str, float]]:
@@ -83,7 +106,7 @@ async def _read_from_mock_buffer() -> list[dict[str, float]]:
         return []
 
     logger.info("Read %d samples from mock buffer (Windows mode)", len(data))
-    return list(data)
+    return filter_sensor_channels(list(data))
 
 
 async def _read_from_picoquake() -> list[dict[str, float]]:
@@ -125,7 +148,7 @@ async def read_sensor_streaming(port: str | None = None):
 
     if mode == "mock":
         async for batch in _stream_from_mock_buffer():
-            yield batch
+            yield filter_sensor_channels(batch)
         return
 
     if mode == "picoquake":
@@ -151,7 +174,7 @@ async def read_sensor_streaming(port: str | None = None):
         batch = await queue.get()
         if batch is None:
             break
-        yield batch
+        yield filter_sensor_channels(batch)
 
 
 def _blocking_read_to_queue(

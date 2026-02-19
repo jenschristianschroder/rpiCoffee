@@ -377,11 +377,13 @@ class PicoQuakeReader:
     @staticmethod
     def _array_to_dicts(arr) -> list[dict[str, float]]:
         """Convert a numpy array (N, 7) → list of dicts matching pipeline format."""
+        from sensor.reader import filter_sensor_channels
         keys = ("elapsed_s", "acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z")
-        return [
+        data = [
             {k: float(arr[i, j]) for j, k in enumerate(keys)}
             for i in range(arr.shape[0])
         ]
+        return filter_sensor_channels(data)
 
 
 # Module-level singleton

@@ -263,7 +263,7 @@ async def health():
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Kiosk display – no auth required."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "config": config.to_dict()})
 
 
 @app.post("/api/brew")

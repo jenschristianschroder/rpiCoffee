@@ -252,23 +252,34 @@ checkServices();
 // ── Chart ─────────────────────────────────────────────────────
 let sensorChart = null;
 
+// Build filtered channel list based on config
+var _allAxes = [
+    { key: 'acc_x',  label: 'Accel X',  color: '#ef4444', group: 'acc' },
+    { key: 'acc_y',  label: 'Accel Y',  color: '#f97316', group: 'acc' },
+    { key: 'acc_z',  label: 'Accel Z',  color: '#eab308', group: 'acc' },
+    { key: 'gyro_x', label: 'Gyro X',   color: '#22c55e', group: 'gyro' },
+    { key: 'gyro_y', label: 'Gyro Y',   color: '#3b82f6', group: 'gyro' },
+    { key: 'gyro_z', label: 'Gyro Z',   color: '#8b5cf6', group: 'gyro' },
+];
+var _kioskAccEnabled  = {{ config['SENSOR_ACC_ENABLED']|tojson }};
+var _kioskGyroEnabled = {{ config['SENSOR_GYRO_ENABLED']|tojson }};
+var _axes = _allAxes.filter(function(a) {
+    if (a.group === 'acc' && !_kioskAccEnabled) return false;
+    if (a.group === 'gyro' && !_kioskGyroEnabled) return false;
+    return true;
+});
+var _kioskKeys = _axes.map(function(a) { return a.key; });
+
 function createSensorChart() {
     const ctx = document.getElementById('sensor-chart').getContext('2d');
-    const axes = [
-        { label: 'Accel X',  color: '#ef4444', dash: [] },
-        { label: 'Accel Y',  color: '#f97316', dash: [] },
-        { label: 'Accel Z',  color: '#eab308', dash: [] },
-        { label: 'Gyro X',   color: '#22c55e', dash: [] },
-        { label: 'Gyro Y',   color: '#3b82f6', dash: [] },
-        { label: 'Gyro Z',   color: '#8b5cf6', dash: [] },
-    ];
+    const axes = _axes;
     sensorChart = new Chart(ctx, {
         type: 'line',
         data: {
             datasets: axes.map(a => ({
                 label: a.label, data: [],
                 borderColor: a.color, borderWidth: 1.5,
-                borderDash: a.dash, pointRadius: 0,
+                borderDash: [], pointRadius: 0,
                 tension: 0.25, fill: false
             }))
         },
@@ -365,7 +376,6 @@ function brew() {
     sensorChart.data.datasets.forEach(ds => ds.data = []);
     sensorChart.update();
 
-    const keys = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
     let sampleIdx = 0;
 
     const es = new EventSource('/api/brew/stream');
@@ -374,7 +384,7 @@ function brew() {
         const batch = JSON.parse(e.data);
         for (const s of batch) {
             const t = s.elapsed_s !== undefined ? s.elapsed_s : sampleIdx++ * 0.01;
-            keys.forEach((k, di) => sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }));
+            _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }); });
         }
         sensorChart.update('none');
     });
@@ -455,7 +465,6 @@ function showResult(data) {
 // Listens for vibration-triggered brew results from the server
 (function connectAutoTrigger() {
     const es = new EventSource('/api/auto-trigger/stream');
-    const keys = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
     let newRecording = false;
 
     es.addEventListener('status', function(e) {
@@ -496,7 +505,7 @@ function showResult(data) {
         for (let i = 0; i < batch.length; i++) {
             const s = batch[i];
             const t = s.elapsed_s !== undefined ? s.elapsed_s : 0;
-            keys.forEach((k, di) => sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }));
+            _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }); });
         }
         sensorChart.update('none');
     });

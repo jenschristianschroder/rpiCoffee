@@ -150,9 +150,19 @@ async function brew() {
 
 // ── Live sensor chart ──────────────────────────────────────
 let WINDOW_S = {{ config['SENSOR_CHART_WINDOW_S'] }};
-const KEYS = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
-const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6'];
-const LABELS = ['Acc X','Acc Y','Acc Z','Gyro X','Gyro Y','Gyro Z'];
+const _ALL_KEYS   = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
+const _ALL_COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6'];
+const _ALL_LABELS = ['Acc X','Acc Y','Acc Z','Gyro X','Gyro Y','Gyro Z'];
+const _accEnabled  = {{ config['SENSOR_ACC_ENABLED']|tojson }};
+const _gyroEnabled = {{ config['SENSOR_GYRO_ENABLED']|tojson }};
+
+// Build filtered arrays based on enabled channels
+const KEYS = [], COLORS = [], LABELS = [];
+_ALL_KEYS.forEach(function(k, i) {
+    if (k.startsWith('acc_') && !_accEnabled) return;
+    if (k.startsWith('gyro_') && !_gyroEnabled) return;
+    KEYS.push(k); COLORS.push(_ALL_COLORS[i]); LABELS.push(_ALL_LABELS[i]);
+});
 
 let liveChart = null;
 let evtSource = null;
@@ -160,7 +170,8 @@ let livePaused = true;
 let sensorConnected = false;
 let streamT0 = null;
 let neutralizeGravity = false;
-const maxVals = { acc_x: 0, acc_y: 0, acc_z: 0, gyro_x: 0, gyro_y: 0, gyro_z: 0 };
+const maxVals = {};
+KEYS.forEach(function(k) { maxVals[k] = 0; });
 
 function createLiveChart() {
     const ctx = document.getElementById('live-chart').getContext('2d');
@@ -238,7 +249,9 @@ function resetMax() {
 function toggleGravity() {
     neutralizeGravity = document.getElementById('gravity-toggle').checked;
     if (!liveChart) return;
-    const ds = liveChart.data.datasets[2]; // Acc Z
+    var accZIdx = KEYS.indexOf('acc_z');
+    if (accZIdx < 0) return;
+    const ds = liveChart.data.datasets[accZIdx];
     ds.data.forEach(pt => {
         pt.y = neutralizeGravity ? pt._raw - 1.0 : pt._raw;
     });
@@ -346,6 +359,10 @@ async function saveSensorConfig(e) {
     const fd = new FormData(form);
     const body = {};
     fd.forEach((v, k) => { body[k] = v; });
+    // Ensure unchecked checkboxes are sent as false
+    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED'].forEach(k => {
+        body[k] = document.getElementById(k).checked ? 'true' : 'false';
+    });
 
     const status = document.getElementById('config-status');
     status.textContent = 'Saving…';
@@ -368,6 +385,14 @@ async function saveSensorConfig(e) {
         const r2 = await fetch('/api/sensor/restart', { method: 'POST' });
         if (!r2.ok) throw new Error('Restart failed');
         status.textContent = '✓ Sensor restarted';
+
+        // If channel visibility changed, reload page so chart/cards rebuild
+        const accNow = document.getElementById('SENSOR_ACC_ENABLED').checked;
+        const gyroNow = document.getElementById('SENSOR_GYRO_ENABLED').checked;
+        if (accNow !== _accEnabled || gyroNow !== _gyroEnabled) {
+            setTimeout(() => location.reload(), 800);
+            return;
+        }
 
         setTimeout(() => {
             liveChart.data.datasets.forEach(ds => ds.data = []);
@@ -445,22 +470,28 @@ document.addEventListener('DOMContentLoaded', function() {
         <h3>&#128225; Live Sensor Feed</h3>
         <div class="live-controls">
             <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
+            {% if config['SENSOR_ACC_ENABLED'] %}
             <label style="display:flex;align-items:center;gap:0.3rem;margin:0;cursor:pointer;font-size:0.8rem;color:var(--pico-muted-color);">
                 <input type="checkbox" id="gravity-toggle" onchange="toggleGravity()" style="margin:0;width:auto;">
                 Z−1g
             </label>
+            {% endif %}
             <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
         </div>
     </div>
 
     <!-- Max values -->
     <div class="max-grid">
+        {% if config['SENSOR_ACC_ENABLED'] %}
         <div class="max-card c0"><div class="lbl">Acc X max</div><div class="val" id="max-acc_x">0.000</div></div>
         <div class="max-card c1"><div class="lbl">Acc Y max</div><div class="val" id="max-acc_y">0.000</div></div>
         <div class="max-card c2"><div class="lbl">Acc Z max</div><div class="val" id="max-acc_z">0.000</div></div>
+        {% endif %}
+        {% if config['SENSOR_GYRO_ENABLED'] %}
         <div class="max-card c3"><div class="lbl">Gyro X max</div><div class="val" id="max-gyro_x">0.000</div></div>
         <div class="max-card c4"><div class="lbl">Gyro Y max</div><div class="val" id="max-gyro_y">0.000</div></div>
         <div class="max-card c5"><div class="lbl">Gyro Z max</div><div class="val" id="max-gyro_z">0.000</div></div>
+        {% endif %}
     </div>
     <div style="text-align:center;margin-bottom:0.5rem;">
         <small style="cursor:pointer;text-decoration:underline;color:var(--pico-muted-color);" onclick="resetMax()">↺ Reset max values</small>
@@ -499,6 +530,18 @@ document.addEventListener('DOMContentLoaded', function() {
             </label>
             <label for="SENSOR_CHART_WINDOW_S">Chart Window (s)
                 <input type="number" id="SENSOR_CHART_WINDOW_S" name="SENSOR_CHART_WINDOW_S" value="{{ config['SENSOR_CHART_WINDOW_S'] }}" min="5" max="120" step="5">
+            </label>
+        </div>
+        <div class="grid">
+            <label style="display:flex;align-items:center;gap:0.5rem;">
+                Accelerometer
+                <input type="checkbox" id="SENSOR_ACC_ENABLED" name="SENSOR_ACC_ENABLED" role="switch"
+                       {% if config['SENSOR_ACC_ENABLED'] %}checked{% endif %}>
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;">
+                Gyroscope
+                <input type="checkbox" id="SENSOR_GYRO_ENABLED" name="SENSOR_GYRO_ENABLED" role="switch"
+                       {% if config['SENSOR_GYRO_ENABLED'] %}checked{% endif %}>
             </label>
         </div>
         <div class="grid">
