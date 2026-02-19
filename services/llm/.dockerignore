@@ -1,0 +1,7 @@
+model/
+coffee-lora/
+coffee-merged/
+llama.cpp/
+__pycache__/
+*.pyc
+.venv/

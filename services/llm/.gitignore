@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Model artifacts (large binary files — not for git)
+coffee-lora/
+coffee-merged/
+coffee-gguf/
+model/
+
+# llama.cpp build tree
+llama.cpp/
+
+# Generated data
+dataset-chat.jsonl
+
+# Logs and test output
+server.log
+test_results.txt

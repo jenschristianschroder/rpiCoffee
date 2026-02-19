@@ -1,0 +1,2 @@
+# Serving dependencies (for running on Pi outside Docker)
+llama-cpp-python==0.3.8

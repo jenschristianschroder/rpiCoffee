@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – rpiCoffee{% endblock %}
+
+{% block nav %}
+<li><a href="/admin/logout">Logout</a></li>
+{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+async function checkServices() {
+    try {
+        const r = await fetch('/api/services/status');
+        const data = await r.json();
+        for (const [svc, info] of Object.entries(data)) {
+            const dot = document.getElementById('status-' + svc);
+            if (!dot) continue;
+            if (info.enabled === false) {
+                dot.className = 'status-dot gray';
+                dot.title = 'Disabled';
+            } else if (info.healthy) {
+                dot.className = 'status-dot green';
+                dot.title = 'Healthy';
+            } else {
+                dot.className = 'status-dot red';
+                dot.title = info.error || 'Unhealthy';
+            }
+        }
+    } catch (e) {
+        console.error('Status check failed', e);
+    }
+}
+
+async function brew() {
+    const btn = document.getElementById('brew-btn');
+    const result = document.getElementById('brew-result');
+    btn.setAttribute('aria-busy', 'true');
+    btn.disabled = true;
+    result.innerHTML = '';
+    result.className = 'pipeline-result';
+
+    // Show chart immediately
+    const chartCard = document.getElementById('sensor-card');
+    const placeholder = document.getElementById('sensor-placeholder');
+    chartCard.style.display = '';
+    placeholder.style.display = 'none';
+    if (!sensorChart) createSensorChart();
+    sensorChart.data.datasets.forEach(ds => ds.data = []);
+    sensorChart.update();
+
+    // Show live status
+    const statusEl = document.getElementById('brew-status');
+    statusEl.textContent = 'Collecting sensor data…';
+    statusEl.style.display = '';
+
+    const keys = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
+    let sampleIdx = 0;
+
+    const es = new EventSource('/api/brew/stream');
+
+    es.addEventListener('sensor', function(e) {
+        const batch = JSON.parse(e.data);
+        for (const s of batch) {
+            const t = s.elapsed_s !== undefined ? s.elapsed_s : sampleIdx++ * 0.01;
+            keys.forEach((k, di) => sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }));
+        }
+        sensorChart.update('none');
+    });
+
+    es.addEventListener('status', function(e) {
+        const msg = JSON.parse(e.data);
+        statusEl.textContent = msg.message;
+    });
+
+    es.addEventListener('classify', function(e) {
+        const d = JSON.parse(e.data);
+        result.insertAdjacentHTML('beforeend', '<p><strong>Classification:</strong> ' + d.label + ' (' + (d.confidence * 100).toFixed(1) + '%)</p>');
+    });
+
+    es.addEventListener('text', function(e) {
+        const d = JSON.parse(e.data);
+        result.insertAdjacentHTML('beforeend', '<p><strong>Generated text:</strong> ' + d.text + '</p>');
+    });
+
+    es.addEventListener('audio', function(e) {
+        const d = JSON.parse(e.data);
+        result.insertAdjacentHTML('beforeend', '<p><strong>Audio:</strong></p><audio controls autoplay src="' + d.audio_url + '"></audio>');
+    });
+
+    es.addEventListener('result', function(e) {
+        es.close();
+        statusEl.style.display = 'none';
+        const data = JSON.parse(e.data);
+
+        let meta = '<h4>Pipeline Result</h4>';
+        meta += '<p><strong>Steps completed:</strong> ' + (data.steps_completed.join(' → ') || 'none') + '</p>';
+        if (data.steps_skipped.length) {
+            meta += '<p><strong>Steps skipped:</strong> ' + data.steps_skipped.join(', ') + '</p>';
+        }
+        if (data.error) {
+            meta += '<p style="color:var(--pico-del-color);"><strong>Note:</strong> ' + data.error + '</p>';
+        }
+        meta += '<p><small>Sensor samples: ' + data.sensor_samples + '</small></p>';
+
+        // Prepend summary before the incremental content
+        result.insertAdjacentHTML('afterbegin', meta);
+        result.className = data.error ? 'pipeline-result error' : 'pipeline-result';
+        btn.removeAttribute('aria-busy');
+        btn.disabled = false;
+    });
+
+    es.onerror = function() {
+        es.close();
+        statusEl.style.display = 'none';
+        result.innerHTML = '<p style="color:var(--pico-del-color);">Pipeline stream disconnected</p>';
+        result.className = 'pipeline-result error';
+        btn.removeAttribute('aria-busy');
+        btn.disabled = false;
+    };
+}
+
+// ── Sensor chart ────────────────────────────────────────────
+let sensorChart = null;
+
+function createSensorChart() {
+    const ctx = document.getElementById('sensor-chart').getContext('2d');
+    const axes = [
+        { key: 'acc_x',  label: 'Accel X',  color: '#ef4444', dash: [] },
+        { key: 'acc_y',  label: 'Accel Y',  color: '#f97316', dash: [] },
+        { key: 'acc_z',  label: 'Accel Z',  color: '#eab308', dash: [] },
+        { key: 'gyro_x', label: 'Gyro X',   color: '#22c55e', dash: [5,5] },
+        { key: 'gyro_y', label: 'Gyro Y',   color: '#3b82f6', dash: [5,5] },
+        { key: 'gyro_z', label: 'Gyro Z',   color: '#8b5cf6', dash: [5,5] },
+    ];
+    sensorChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: axes.map(a => ({
+                label: a.label,
+                data: [],
+                borderColor: a.color,
+                borderWidth: 1.5,
+                borderDash: a.dash,
+                pointRadius: 0,
+                tension: 0.25,
+                fill: false
+            }))
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            parsing: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, padding: 10 } },
+                       decimation: { enabled: true, algorithm: 'lttb', samples: 500 } },
+            scales: {
+                x: { type: 'linear', min: 0, max: 30,
+                     title: { display: true, text: 'Time (s)' },
+                     ticks: { stepSize: 5 } },
+                y: { title: { display: true, text: 'Value' } }
+            }
+        }
+    });
+    return sensorChart;
+}
+
+// Poll service health every 10s
+setInterval(checkServices, 10000);
+document.addEventListener('DOMContentLoaded', checkServices);
+</script>
+{% endblock %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+{% if message %}
+<div class="flash">{{ message }}</div>
+{% endif %}
+
+<!-- Service Status -->
+<div class="card">
+    <h3>Service Status</h3>
+    <div class="grid">
+        <div>
+            <span id="status-sensor_mock" class="status-dot gray" title="Checking…"></span>
+            <strong>sensor</strong> <small>(mock)</small>
+        </div>
+        <div>
+            <span id="status-localml" class="status-dot gray" title="Checking…"></span>
+            <strong>localml</strong> <small>(classifier)</small>
+        </div>
+        <div>
+            <span id="status-locallm" class="status-dot gray" title="Checking…"></span>
+            <strong>locallm</strong> <small>(text gen)</small>
+        </div>
+        <div>
+            <span id="status-localtts" class="status-dot gray" title="Checking…"></span>
+            <strong>localtts</strong> <small>(TTS)</small>
+        </div>
+        <div>
+            <span id="status-remote_save" class="status-dot gray" title="Checking…"></span>
+            <strong>remote save</strong> <small>(logging)</small>
+        </div>
+    </div>
+</div>
+
+<!-- Brew -->
+<div class="card">
+    <h3>Brew Pipeline</h3>
+    <p>Sensor → Classify → Generate Text → Speak</p>
+    <button id="brew-btn" onclick="brew()">&#9749; Brew!</button>
+    <p id="brew-status" style="display:none;color:var(--pico-muted-color);margin-top:0.5rem;" aria-busy="true"></p>
+    <div id="brew-result"></div>
+</div>
+
+<!-- Sensor Data Chart -->
+<div class="card" id="sensor-card" style="display:none;">
+    <h3>Sensor Data</h3>
+    <canvas id="sensor-chart" height="120"></canvas>
+</div>
+<p id="sensor-placeholder" style="text-align:center;color:var(--pico-muted-color);margin-bottom:1rem;">
+    <em>Sensor chart will appear after a brew</em>
+</p>
+
+<!-- Settings -->
+<div class="card">
+    <h3>Configuration</h3>
+    <form method="post" action="/admin/settings">
+
+        <fieldset>
+            <legend><strong>Admin</strong></legend>
+            <label for="ADMIN_PASSWORD">Password
+                <input type="password" id="ADMIN_PASSWORD" name="ADMIN_PASSWORD" value="{{ config['ADMIN_PASSWORD'] }}">
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend><strong>localml</strong> – Coffee Classifier</legend>
+            <div class="grid">
+                <label>
+                    Enabled
+                    <input type="checkbox" name="LOCALML_ENABLED" role="switch"
+                           {% if config['LOCALML_ENABLED'] %}checked{% endif %}>
+                </label>
+                <label for="LOCALML_ENDPOINT">Endpoint
+                    <input type="text" id="LOCALML_ENDPOINT" name="LOCALML_ENDPOINT" value="{{ config['LOCALML_ENDPOINT'] }}">
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><strong>locallm</strong> – Text Generation</legend>
+            <div class="grid">
+                <label>
+                    Enabled
+                    <input type="checkbox" name="LOCALLM_ENABLED" role="switch"
+                           {% if config['LOCALLM_ENABLED'] %}checked{% endif %}>
+                </label>
+                <label for="LOCALLM_ENDPOINT">Endpoint
+                    <input type="text" id="LOCALLM_ENDPOINT" name="LOCALLM_ENDPOINT" value="{{ config['LOCALLM_ENDPOINT'] }}">
+                </label>
+            </div>
+            <div class="grid">
+                <label for="LLM_MAX_TOKENS">Max Tokens
+                    <input type="number" id="LLM_MAX_TOKENS" name="LLM_MAX_TOKENS" value="{{ config['LLM_MAX_TOKENS'] }}" min="1" max="4096">
+                </label>
+                <label for="LLM_TEMPERATURE">Temperature
+                    <input type="number" id="LLM_TEMPERATURE" name="LLM_TEMPERATURE" value="{{ config['LLM_TEMPERATURE'] }}" min="0" max="2" step="0.05">
+                </label>
+            </div>
+            <div class="grid">
+                <label for="LLM_TOP_P">Top-P
+                    <input type="number" id="LLM_TOP_P" name="LLM_TOP_P" value="{{ config['LLM_TOP_P'] }}" min="0" max="1" step="0.05">
+                </label>
+                <label>
+                    TTS Mode
+                    <input type="checkbox" name="LLM_TTS" role="switch"
+                           {% if config['LLM_TTS'] %}checked{% endif %}>
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><strong>localtts</strong> – Text-to-Speech</legend>
+            <div class="grid">
+                <label>
+                    Enabled
+                    <input type="checkbox" name="LOCALTTS_ENABLED" role="switch"
+                           {% if config['LOCALTTS_ENABLED'] %}checked{% endif %}>
+                </label>
+                <label for="LOCALTTS_ENDPOINT">Endpoint
+                    <input type="text" id="LOCALTTS_ENDPOINT" name="LOCALTTS_ENDPOINT" value="{{ config['LOCALTTS_ENDPOINT'] }}">
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><strong>Remote Save</strong> – Brew Logging</legend>
+            <div class="grid">
+                <label>
+                    Enabled
+                    <input type="checkbox" name="REMOTE_SAVE_ENABLED" role="switch"
+                           {% if config['REMOTE_SAVE_ENABLED'] %}checked{% endif %}>
+                </label>
+                <label for="REMOTE_SAVE_ENDPOINT">Endpoint
+                    <input type="text" id="REMOTE_SAVE_ENDPOINT" name="REMOTE_SAVE_ENDPOINT" value="{{ config['REMOTE_SAVE_ENDPOINT'] }}">
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend><strong>Sensor</strong></legend>
+            <div class="grid">
+                <label>
+                    Mock Enabled
+                    <input type="checkbox" name="SENSOR_MOCK_ENABLED" role="switch"
+                           {% if config['SENSOR_MOCK_ENABLED'] %}checked{% endif %}>
+                </label>
+                <label for="SENSOR_SERIAL_PORT">Serial Port
+                    <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}">
+                </label>
+            </div>
+            <div class="grid">
+                <label for="SENSOR_SAMPLE_RATE_HZ">Sample Rate (Hz)
+                    <input type="number" id="SENSOR_SAMPLE_RATE_HZ" name="SENSOR_SAMPLE_RATE_HZ" value="{{ config['SENSOR_SAMPLE_RATE_HZ'] }}">
+                </label>
+                <label for="SENSOR_DURATION_S">Duration (s)
+                    <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}">
+                </label>
+            </div>
+        </fieldset>
+
+        <button type="submit">Save Settings</button>
+    </form>
+</div>
+{% endblock %}

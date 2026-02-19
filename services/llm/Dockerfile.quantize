@@ -1,0 +1,26 @@
+# =============================================================================
+# Quantize the F16 GGUF model to Q4_K_M on your dev machine (x86).
+#
+# Run:
+#   docker build -f Dockerfile.quantize -o coffee-gguf .
+#
+# This outputs coffee-Q4_K_M.gguf into the coffee-gguf/ directory.
+# =============================================================================
+
+FROM python:3.11-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /llama.cpp && \
+    cd /llama.cpp && \
+    cmake -B build && \
+    cmake --build build --target llama-quantize --config Release -j$(nproc)
+
+WORKDIR /output
+COPY coffee-gguf/coffee-f16.gguf input.gguf
+RUN /llama.cpp/build/bin/llama-quantize input.gguf coffee-Q4_K_M.gguf Q4_K_M
+
+FROM scratch
+COPY --from=0 /output/coffee-Q4_K_M.gguf /coffee-Q4_K_M.gguf

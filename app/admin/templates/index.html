@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1280, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>rpiCoffee</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --pico-font-size: 18px;
+            --accent: #d97706;
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0; padding: 0;
+            width: 1280px; height: 720px;
+            overflow: hidden;
+            background: var(--pico-background-color);
+            color: var(--pico-color);
+        }
+
+        /* ── Top bar ────────────────────────────────── */
+        .topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #1a1a2e; color: #fff;
+            padding: 0.4rem 1rem;
+            height: 44px;
+            font-size: 1rem;
+        }
+        .topbar .title { font-weight: 700; font-size: 1.2rem; }
+        .topbar .clock { font-variant-numeric: tabular-nums; opacity: 0.85; }
+        .topbar .status-dots { display: flex; gap: 0.8rem; align-items: center; }
+        .topbar .status-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: #ccc; }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .dot.green { background: #22c55e; }
+        .dot.red   { background: #ef4444; }
+        .dot.gray  { background: #9ca3af; }
+
+        /* ── Layout ─────────────────────────────────── */
+        .kiosk-body {
+            display: flex; flex-direction: column;
+            height: calc(720px - 44px);
+            padding: 0.6rem;
+            gap: 0.6rem;
+        }
+        .top-row {
+            display: flex; flex-direction: row;
+            gap: 0.6rem;
+            flex-shrink: 0;
+        }
+        .left-col {
+            display: flex; flex-direction: column;
+            width: 300px; flex-shrink: 0;
+            gap: 0.4rem;
+        }
+        .right-col {
+            flex: 1;
+            display: flex; flex-direction: column;
+            min-width: 0;
+        }
+        .bottom-row {
+            flex: 1;
+            min-height: 0;
+            display: flex; flex-direction: column;
+        }
+
+        /* ── Brew section ───────────────────────────── */
+        .brew-section { text-align: center; padding-top: 0.3rem; }
+        .brew-btn {
+            font-size: 1.6rem;
+            padding: 0.6rem 2.5rem;
+            border-radius: 50px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .brew-btn:active { transform: scale(0.96); }
+        .brew-btn:disabled { opacity: 0.5; }
+        .brew-status {
+            margin-top: 0.3rem;
+            font-size: 0.9rem;
+            color: var(--pico-muted-color);
+        }
+
+        /* ── Result card ────────────────────────────── */
+        .result-card {
+            background: var(--pico-card-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+        .result-card .label-badge {
+            display: inline-block;
+            font-size: 1.3rem;
+            font-weight: 700;
+            text-transform: capitalize;
+            padding: 0.2rem 1rem;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #fff;
+            margin-bottom: 0.4rem;
+        }
+        .result-card .generated-text {
+            font-size: 1.05rem;
+            font-style: italic;
+            line-height: 1.35;
+            margin: 0.3rem 0;
+        }
+        .result-card .meta {
+            font-size: 0.85rem;
+            color: var(--pico-muted-color);
+        }
+        .result-card .error-note {
+            color: #ef4444;
+            font-size: 0.95rem;
+        }
+        .result-card audio { width: 100%; margin-top: 0.4rem; height: 28px; opacity: 0.6; }
+        .result-placeholder {
+            text-align: center;
+            color: var(--pico-muted-color);
+            padding: 1.5rem 0;
+            font-size: 1rem;
+        }
+
+        /* ── Chart area ─────────────────────────────── */
+        .chart-area {
+            flex: 1;
+            min-height: 0;
+            background: var(--pico-card-background-color);
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 12px;
+            padding: 0.6rem;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-area h4 { margin: 0 0 0.2rem 0; font-size: 0.95rem; }
+        .chart-area canvas { flex: 1; min-height: 0; }
+        .chart-placeholder {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--pico-muted-color);
+            font-size: 1rem;
+        }
+
+        /* ── Admin link ─────────────────────────────── */
+        .admin-link {
+            text-align: center;
+            padding: 0.2rem;
+            font-size: 0.75rem;
+        }
+        .admin-link a { color: var(--pico-muted-color); text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+    <span class="title">&#9749; rpiCoffee</span>
+    <div class="status-dots">
+        <div class="status-item"><span class="dot gray" id="s-sensor_mock"></span>sensor</div>
+        <div class="status-item"><span class="dot gray" id="s-localml"></span>classifier</div>
+        <div class="status-item"><span class="dot gray" id="s-locallm"></span>text gen</div>
+        <div class="status-item"><span class="dot gray" id="s-localtts"></span>TTS</div>
+        <div class="status-item"><span class="dot gray" id="s-remote_save"></span>save</div>
+    </div>
+    <span class="clock" id="clock"></span>
+</div>
+
+<div class="kiosk-body">
+
+  <!-- Top row: brew (left) + result (right) -->
+  <div class="top-row">
+
+    <div class="left-col">
+      <div class="brew-section">
+          <button class="brew-btn" id="brew-btn" onclick="brew()">&#9749; Brew!</button>
+          <div class="brew-status" id="brew-status"></div>
+      </div>
+      <div class="admin-link"><a href="/admin/">Admin Settings</a></div>
+    </div>
+
+    <div class="right-col">
+      <div class="result-card" id="result-card">
+          <div class="result-placeholder" id="result-placeholder">
+              Press <strong>Brew</strong> to start the pipeline
+          </div>
+          <div id="result-content" style="display:none;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom row: full-width chart -->
+  <div class="bottom-row">
+    <div class="chart-area">
+        <h4>Sensor Data</h4>
+        <div class="chart-placeholder" id="chart-placeholder">Waiting for brew…</div>
+        <canvas id="sensor-chart" style="display:none;"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Clock ─────────────────────────────────────────────────────
+function updateClock() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('clock').textContent = h + ':' + m + ':' + s;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Service health ────────────────────────────────────────────
+async function checkServices() {
+    try {
+        const r = await fetch('/api/services/status');
+        const data = await r.json();
+        for (const [svc, info] of Object.entries(data)) {
+            const dot = document.getElementById('s-' + svc);
+            if (!dot) continue;
+            if (info.enabled === false) { dot.className = 'dot gray'; }
+            else if (info.healthy)      { dot.className = 'dot green'; }
+            else                        { dot.className = 'dot red'; }
+
+        }
+    } catch (e) { /* ignore */ }
+}
+setInterval(checkServices, 10000);
+checkServices();
+
+// ── Chart ─────────────────────────────────────────────────────
+let sensorChart = null;
+
+function createSensorChart() {
+    const ctx = document.getElementById('sensor-chart').getContext('2d');
+    const axes = [
+        { label: 'Accel X',  color: '#ef4444', dash: [] },
+        { label: 'Accel Y',  color: '#f97316', dash: [] },
+        { label: 'Accel Z',  color: '#eab308', dash: [] },
+        { label: 'Gyro X',   color: '#22c55e', dash: [5,5] },
+        { label: 'Gyro Y',   color: '#3b82f6', dash: [5,5] },
+        { label: 'Gyro Z',   color: '#8b5cf6', dash: [5,5] },
+    ];
+    sensorChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: axes.map(a => ({
+                label: a.label, data: [],
+                borderColor: a.color, borderWidth: 1.5,
+                borderDash: a.dash, pointRadius: 0,
+                tension: 0.25, fill: false
+            }))
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            animation: false, parsing: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                decimation: { enabled: true, algorithm: 'lttb', samples: 500 }
+            },
+            scales: {
+                x: { type: 'linear', min: 0, max: 30,
+                     title: { display: true, text: 'Time (s)', font: { size: 12 } },
+                     ticks: { stepSize: 5, font: { size: 11 } } },
+                y: { title: { display: true, text: 'Value', font: { size: 12 } },
+                     ticks: { font: { size: 11 } } }
+            }
+        }
+    });
+}
+
+// ── Brew ──────────────────────────────────────────────────────
+function brew() {
+    const btn = document.getElementById('brew-btn');
+    const statusEl = document.getElementById('brew-status');
+    const resultContent = document.getElementById('result-content');
+    const resultPlaceholder = document.getElementById('result-placeholder');
+    const chartCanvas = document.getElementById('sensor-chart');
+    const chartPlaceholder = document.getElementById('chart-placeholder');
+
+    btn.disabled = true;
+    statusEl.textContent = 'Collecting sensor data…';
+    resultPlaceholder.style.display = 'none';
+    resultContent.style.display = 'none';
+    resultContent.innerHTML = '';
+
+    // Show chart
+    chartPlaceholder.style.display = 'none';
+    chartCanvas.style.display = '';
+    if (!sensorChart) createSensorChart();
+    sensorChart.data.datasets.forEach(ds => ds.data = []);
+    sensorChart.update();
+
+    const keys = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
+    let sampleIdx = 0;
+
+    const es = new EventSource('/api/brew/stream');
+
+    es.addEventListener('sensor', function(e) {
+        const batch = JSON.parse(e.data);
+        for (const s of batch) {
+            const t = s.elapsed_s !== undefined ? s.elapsed_s : sampleIdx++ * 0.01;
+            keys.forEach((k, di) => sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }));
+        }
+        sensorChart.update('none');
+    });
+
+    es.addEventListener('status', function(e) {
+        statusEl.textContent = JSON.parse(e.data).message;
+    });
+
+    es.addEventListener('classify', function(e) {
+        const d = JSON.parse(e.data);
+        let html = '<span class="label-badge">' + d.label + '</span> ';
+        html += '<span class="meta">(' + (d.confidence * 100).toFixed(1) + '% confidence)</span>';
+        resultContent.innerHTML = html;
+        resultContent.style.display = '';
+    });
+
+    es.addEventListener('text', function(e) {
+        const d = JSON.parse(e.data);
+        resultContent.insertAdjacentHTML('beforeend', '<p class="generated-text">"' + d.text + '"</p>');
+    });
+
+    es.addEventListener('audio', function(e) {
+        const d = JSON.parse(e.data);
+        resultContent.insertAdjacentHTML('beforeend', '<audio controls autoplay src="' + d.audio_url + '"></audio>');
+    });
+
+    es.addEventListener('result', function(e) {
+        es.close();
+        const data = JSON.parse(e.data);
+        // Append final meta line
+        let meta = '<p class="meta">Steps: ' + (data.steps_completed.join(' \u2192 ') || 'none');
+        if (data.steps_skipped.length) meta += ' \u00b7 Skipped: ' + data.steps_skipped.join(', ');
+        meta += ' \u00b7 ' + data.sensor_samples + ' samples</p>';
+        if (data.error) meta = '<p class="error-note">' + data.error + '</p>' + meta;
+        resultContent.insertAdjacentHTML('beforeend', meta);
+        statusEl.textContent = '';
+        btn.disabled = false;
+    });
+
+    es.onerror = function() {
+        es.close();
+        statusEl.textContent = 'Connection lost';
+        btn.disabled = false;
+    };
+}
+
+function showResult(data) {
+    const el = document.getElementById('result-content');
+    let html = '';
+
+    if (data.label) {
+        html += '<span class="label-badge">' + data.label + '</span> ';
+        html += '<span class="meta">(' + (data.confidence * 100).toFixed(1) + '% confidence)</span>';
+    }
+    if (data.text) {
+        html += '<p class="generated-text">"' + data.text + '"</p>';
+    }
+    if (data.audio_url) {
+        html += '<audio controls autoplay src="' + data.audio_url + '"></audio>';
+    }
+    if (data.error) {
+        html += '<p class="error-note">' + data.error + '</p>';
+    }
+    html += '<p class="meta">Steps: ' + (data.steps_completed.join(' → ') || 'none');
+    if (data.steps_skipped.length) html += ' · Skipped: ' + data.steps_skipped.join(', ');
+    html += ' · ' + data.sensor_samples + ' samples</p>';
+
+    el.innerHTML = html;
+    el.style.display = '';
+}
+</script>
+</body>
+</html>

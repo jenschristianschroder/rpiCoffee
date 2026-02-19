@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}rpiCoffee{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root { --pico-font-size: 16px; }
+        nav { padding: 0.5rem 1rem; background: #1a1a2e; }
+        nav ul li a { color: #eee; }
+        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 0.4rem; }
+        .status-dot.green { background: #22c55e; }
+        .status-dot.red { background: #ef4444; }
+        .status-dot.gray { background: #9ca3af; }
+        .card { background: var(--pico-card-background-color); border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; border: 1px solid var(--pico-muted-border-color); }
+        .pipeline-result { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+        .pipeline-result.error { background: #fef2f2; border-color: #fecaca; }
+        .flash { padding: 0.75rem 1rem; background: #dbeafe; border: 1px solid #93c5fd; border-radius: 6px; margin-bottom: 1rem; }
+        [data-theme="dark"] .pipeline-result { background: #052e16; border-color: #166534; }
+        [data-theme="dark"] .pipeline-result.error { background: #450a0a; border-color: #991b1b; }
+        [data-theme="dark"] .flash { background: #1e3a5f; border-color: #2563eb; }
+        #theme-toggle { background: none; border: none; cursor: pointer; font-size: 1.25rem; padding: 0.25rem 0.5rem; line-height: 1; }
+    </style>
+    <script>
+        (function() {
+            var t = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav>
+        <ul><li><strong style="color:#fff;">&#9749; rpiCoffee</strong></li></ul>
+        <ul>
+            {% block nav %}{% endblock %}
+            <li><button id="theme-toggle" title="Toggle dark mode" onclick="toggleTheme()">🌙</button></li>
+        </ul>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        function toggleTheme() {
+            var html = document.documentElement;
+            var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            updateToggleIcon();
+        }
+        function updateToggleIcon() {
+            var btn = document.getElementById('theme-toggle');
+            if (btn) btn.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+        }
+        updateToggleIcon();
+    </script>
+</body>
+</html>

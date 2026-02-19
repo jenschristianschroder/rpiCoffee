@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+
+# Runtime data (generated audio, settings, saved brews)
+/data/audio/
+/data/settings.json
+/data/brews/
+
+# Sample/training CSV files
+*.csv
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
