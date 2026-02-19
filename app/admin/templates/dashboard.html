@@ -22,6 +22,7 @@
     .live-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
     .live-dot.on  { background: #22c55e; }
     .live-dot.off { background: #ef4444; }
+    .live-dot.connected { background: #22c55e; }
     @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
     .live-dot.on { animation: pulse-dot 1.2s ease-in-out infinite; }
     .chart-wrap { position: relative; height: 280px; margin-bottom: 0.5rem; }
@@ -156,6 +157,7 @@ const LABELS = ['Acc X','Acc Y','Acc Z','Gyro X','Gyro Y','Gyro Z'];
 let liveChart = null;
 let evtSource = null;
 let livePaused = true;
+let sensorConnected = false;
 let streamT0 = null;
 const maxVals = { acc_x: 0, acc_y: 0, acc_z: 0, gyro_x: 0, gyro_y: 0, gyro_z: 0 };
 
@@ -215,6 +217,14 @@ function connectStream() {
     evtSource = new EventSource('/api/sensor/stream');
 
     evtSource.onmessage = function(e) {
+        // Mark connected on first message
+        if (!sensorConnected) {
+            sensorConnected = true;
+            if (livePaused) {
+                document.getElementById('live-dot').className = 'live-dot connected';
+                document.getElementById('live-label').textContent = 'Connected';
+            }
+        }
         if (livePaused) return;
         const batch = JSON.parse(e.data);
         if (!batch.length) return;
@@ -248,6 +258,7 @@ function connectStream() {
     };
 
     evtSource.addEventListener('error', function(e) {
+        sensorConnected = false;
         // Check for custom error events from our endpoint
         if (e.data) {
             document.getElementById('live-label').textContent = 'Error: ' + JSON.parse(e.data);
