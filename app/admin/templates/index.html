@@ -209,7 +209,7 @@
   <!-- Bottom row: full-width chart -->
   <div class="bottom-row">
     <div class="chart-area">
-        <h4>Sensor Data</h4>
+        <h4>Sensor Data <small style="font-weight:normal;color:var(--pico-muted-color);font-size:0.7rem;margin-left:0.5rem;">RMS {{ config['SENSOR_RMS_WINDOW_S'] }}s &middot; thr {{ config['SENSOR_VIBRATION_THRESHOLD'] }}g{% if config['SENSOR_NEUTRALIZE_GRAVITY'] %} &middot; Z&minus;1g{% endif %}</small></h4>
         <div class="chart-placeholder" id="chart-placeholder">Waiting for brew…</div>
         <div class="chart-container">
             <canvas id="sensor-chart" style="display:none;"></canvas>
