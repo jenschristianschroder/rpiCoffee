@@ -171,7 +171,7 @@ let evtSource = null;
 let livePaused = true;
 let sensorConnected = false;
 let streamT0 = null;
-let neutralizeGravity = false;
+let neutralizeGravity = {{ config['SENSOR_NEUTRALIZE_GRAVITY']|tojson }};
 const maxVals = {};
 KEYS.forEach(function(k) { maxVals[k] = 0; });
 let accelRms = 0;
@@ -292,7 +292,6 @@ function resetMax() {
 }
 
 function toggleGravity() {
-    neutralizeGravity = document.getElementById('gravity-toggle').checked;
     if (!liveChart) return;
     var accZIdx = KEYS.indexOf('acc_z');
     if (accZIdx < 0) return;
@@ -407,8 +406,9 @@ async function saveSensorConfig(e) {
     const body = {};
     fd.forEach((v, k) => { body[k] = v; });
     // Ensure unchecked checkboxes are sent as false
-    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED'].forEach(k => {
-        body[k] = document.getElementById(k).checked ? 'true' : 'false';
+    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED', 'SENSOR_NEUTRALIZE_GRAVITY'].forEach(k => {
+        var el = document.getElementById(k);
+        body[k] = el && el.checked ? 'true' : 'false';
     });
 
     const status = document.getElementById('config-status');
@@ -442,10 +442,12 @@ async function saveSensorConfig(e) {
         if (!r2.ok) throw new Error('Restart failed');
         status.textContent = '✓ Sensor restarted';
 
-        // If channel visibility changed, reload page so chart/cards rebuild
+        // If channel visibility or gravity changed, reload page so chart/cards rebuild
         const accNow = document.getElementById('SENSOR_ACC_ENABLED').checked;
         const gyroNow = document.getElementById('SENSOR_GYRO_ENABLED').checked;
-        if (accNow !== _accEnabled || gyroNow !== _gyroEnabled) {
+        const gravEl = document.getElementById('SENSOR_NEUTRALIZE_GRAVITY');
+        const gravNow = gravEl ? gravEl.checked : false;
+        if (accNow !== _accEnabled || gyroNow !== _gyroEnabled || gravNow !== neutralizeGravity) {
             setTimeout(() => location.reload(), 800);
             return;
         }
@@ -527,12 +529,6 @@ document.addEventListener('DOMContentLoaded', function() {
         <h3>&#128225; Live Sensor Feed</h3>
         <div class="live-controls">
             <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
-            {% if config['SENSOR_ACC_ENABLED'] %}
-            <label style="display:flex;align-items:center;gap:0.3rem;margin:0;cursor:pointer;font-size:0.8rem;color:var(--pico-muted-color);">
-                <input type="checkbox" id="gravity-toggle" onchange="toggleGravity()" role="switch" style="margin:0;width:auto;height:auto;font-size:0.7rem;">
-                Z−1g
-            </label>
-            {% endif %}
             <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
         </div>
     </div>
@@ -603,6 +599,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 <input type="checkbox" id="SENSOR_GYRO_ENABLED" name="SENSOR_GYRO_ENABLED" role="switch"
                        {% if config['SENSOR_GYRO_ENABLED'] %}checked{% endif %}>
             </label>
+            {% if config['SENSOR_ACC_ENABLED'] %}
+            <label style="display:flex;align-items:center;gap:0.5rem;">
+                Neutralize Gravity (Z−1g)
+                <input type="checkbox" id="SENSOR_NEUTRALIZE_GRAVITY" name="SENSOR_NEUTRALIZE_GRAVITY" role="switch"
+                       {% if config['SENSOR_NEUTRALIZE_GRAVITY'] %}checked{% endif %}>
+            </label>
+            {% endif %}
         </div>
         <div class="grid">
             <label for="SENSOR_ACC_RANGE_G">Accel Range (g)

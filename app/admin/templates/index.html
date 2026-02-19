@@ -269,6 +269,11 @@ var _axes = _allAxes.filter(function(a) {
     return true;
 });
 var _kioskKeys = _axes.map(function(a) { return a.key; });
+var _neutralizeGravity = {{ config['SENSOR_NEUTRALIZE_GRAVITY']|tojson }};
+
+function _applyGravity(k, v) {
+    return (k === 'acc_z' && _neutralizeGravity) ? v - 1.0 : v;
+}
 
 function createSensorChart() {
     const ctx = document.getElementById('sensor-chart').getContext('2d');
@@ -384,7 +389,7 @@ function brew() {
         const batch = JSON.parse(e.data);
         for (const s of batch) {
             const t = s.elapsed_s !== undefined ? s.elapsed_s : sampleIdx++ * 0.01;
-            _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }); });
+            _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: _applyGravity(k, s[k]) }); });
         }
         sensorChart.update('none');
     });
@@ -505,7 +510,7 @@ function showResult(data) {
         for (let i = 0; i < batch.length; i++) {
             const s = batch[i];
             const t = s.elapsed_s !== undefined ? s.elapsed_s : 0;
-            _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }); });
+            _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: _applyGravity(k, s[k]) }); });
         }
         sensorChart.update('none');
     });
