@@ -252,6 +252,13 @@ def main_acquisition():
                         help="RMS averaging window in seconds (e.g. 0.2 for faster trigger)")
     parser.add_argument("--window", "-w", type=int, default=60,
                         help="Ring buffer length in seconds")
+    parser.add_argument("--acc-range", type=int, default=4,
+                        choices=[2, 4, 8, 16], help="Accelerometer range in g")
+    parser.add_argument("--gyro-range", type=int, default=500,
+                        choices=[250, 500, 1000, 2000], help="Gyroscope range in dps")
+    parser.add_argument("--filter-hz", type=int, default=42,
+                        choices=[42, 98, 184, 750],
+                        help="Low-pass filter cutoff in Hz")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -279,15 +286,34 @@ def main_acquisition():
         ring.cleanup()
         sys.exit(1)
 
+    _ACC_RANGE_MAP = {
+        2: picoquake.AccRange.g_2,
+        4: picoquake.AccRange.g_4,
+        8: picoquake.AccRange.g_8,
+        16: picoquake.AccRange.g_16,
+    }
+    _GYRO_RANGE_MAP = {
+        250: picoquake.GyroRange.dps_250,
+        500: picoquake.GyroRange.dps_500,
+        1000: picoquake.GyroRange.dps_1000,
+        2000: picoquake.GyroRange.dps_2000,
+    }
+    _FILTER_MAP = {
+        42: picoquake.Filter.hz_42,
+        98: picoquake.Filter.hz_98,
+        184: picoquake.Filter.hz_184,
+        750: picoquake.Filter.hz_750,
+    }
+
     device.configure(
         sample_rate=_rate_enum(args.rate),
-        filter_hz=picoquake.Filter.hz_42,
-        acc_range=picoquake.AccRange.g_4,
-        gyro_range=picoquake.GyroRange.dps_500,
+        filter_hz=_FILTER_MAP[args.filter_hz],
+        acc_range=_ACC_RANGE_MAP[args.acc_range],
+        gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
     )
 
-    logger.info("Device configured: %d Hz | threshold=%.1fg | duration=%ds",
-                args.rate, args.threshold, args.duration)
+    logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | threshold=%.1fg | duration=%ds",
+                args.rate, args.acc_range, args.gyro_range, args.filter_hz, args.threshold, args.duration)
     logger.info("Starting continuous acquisition…")
 
     device.start_continuos()

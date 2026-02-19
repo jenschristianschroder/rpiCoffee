@@ -27,6 +27,7 @@ _EDITABLE_KEYS = [
     "SENSOR_MODE", "SENSOR_DEVICE_ID", "SENSOR_SERIAL_PORT",
     "SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S",
     "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S", "SENSOR_AUTO_TRIGGER",
+    "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
 ]
 
 _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_TRIGGER", "LLM_TTS", "REMOTE_SAVE_ENABLED"}
@@ -96,7 +97,8 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
 # Keys whose change requires a sensor restart
 _SENSOR_KEYS = {"SENSOR_MODE", "SENSOR_DEVICE_ID", "SENSOR_SAMPLE_RATE_HZ",
                 "SENSOR_DURATION_S", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S",
-                "SENSOR_AUTO_TRIGGER"}
+                "SENSOR_AUTO_TRIGGER", "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS",
+                "SENSOR_FILTER_HZ"}
 
 
 # ── Settings update ─────────────────────────────────────────────

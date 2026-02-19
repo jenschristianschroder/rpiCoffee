@@ -51,6 +51,9 @@ class PicoQuakeReader:
         threshold: float = 2.0,
         window: int = 60,
         rms_window_s: float = 1.0,
+        acc_range: int = 4,
+        gyro_range: int = 500,
+        filter_hz: int = 42,
     ) -> None:
         """Spawn the acquisition subprocess and wait for it to be ready."""
         if self._process and self._process.poll() is None:
@@ -64,6 +67,9 @@ class PicoQuakeReader:
             "threshold": threshold,
             "window": window,
             "rms_window_s": rms_window_s,
+            "acc_range": acc_range,
+            "gyro_range": gyro_range,
+            "filter_hz": filter_hz,
         }
 
         acq_script = str(Path(__file__).with_name("picoquake_acq.py"))
@@ -75,6 +81,9 @@ class PicoQuakeReader:
             "--duration", str(duration),
             "--window", str(window),
             "--rms-window", str(rms_window_s),
+            "--acc-range", str(acc_range),
+            "--gyro-range", str(gyro_range),
+            "--filter-hz", str(filter_hz),
         ]
 
         logger.info("Spawning acquisition: %s", " ".join(cmd))

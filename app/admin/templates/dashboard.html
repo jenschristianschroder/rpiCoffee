@@ -396,6 +396,29 @@ document.addEventListener('DOMContentLoaded', checkServices);
                            {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
                 </label>
             </div>
+            <div class="grid">
+                <label for="SENSOR_ACC_RANGE_G">Accel Range (g)
+                    <select id="SENSOR_ACC_RANGE_G" name="SENSOR_ACC_RANGE_G">
+                        {% for v in [2, 4, 8, 16] %}
+                        <option value="{{ v }}" {% if config['SENSOR_ACC_RANGE_G'] == v %}selected{% endif %}>± {{ v }} g</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label for="SENSOR_GYRO_RANGE_DPS">Gyro Range (dps)
+                    <select id="SENSOR_GYRO_RANGE_DPS" name="SENSOR_GYRO_RANGE_DPS">
+                        {% for v in [250, 500, 1000, 2000] %}
+                        <option value="{{ v }}" {% if config['SENSOR_GYRO_RANGE_DPS'] == v %}selected{% endif %}>± {{ v }} dps</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label for="SENSOR_FILTER_HZ">Low-Pass Filter (Hz)
+                    <select id="SENSOR_FILTER_HZ" name="SENSOR_FILTER_HZ">
+                        {% for v in [42, 98, 184, 750] %}
+                        <option value="{{ v }}" {% if config['SENSOR_FILTER_HZ'] == v %}selected{% endif %}>{{ v }} Hz</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
         </fieldset>
 
         <button type="submit">Save Settings</button>

@@ -150,6 +150,9 @@ def _start_sensor() -> None:
         duration=cfg.get("SENSOR_DURATION_S", 30),
         threshold=cfg.get("SENSOR_VIBRATION_THRESHOLD", 2.0),
         rms_window_s=cfg.get("SENSOR_RMS_WINDOW_S", 1.0),
+        acc_range=cfg.get("SENSOR_ACC_RANGE_G", 4),
+        gyro_range=cfg.get("SENSOR_GYRO_RANGE_DPS", 500),
+        filter_hz=cfg.get("SENSOR_FILTER_HZ", 42),
     )
     _sensor_started = True
 
