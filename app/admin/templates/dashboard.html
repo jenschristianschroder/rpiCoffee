@@ -159,6 +159,7 @@ let evtSource = null;
 let livePaused = true;
 let sensorConnected = false;
 let streamT0 = null;
+let neutralizeGravity = false;
 const maxVals = { acc_x: 0, acc_y: 0, acc_z: 0, gyro_x: 0, gyro_y: 0, gyro_z: 0 };
 
 function createLiveChart() {
@@ -222,7 +223,33 @@ function updateMaxDisplay() {
 
 function resetMax() {
     KEYS.forEach(k => { maxVals[k] = 0; });
+    // Recompute from existing data
+    if (liveChart) {
+        KEYS.forEach((k, i) => {
+            liveChart.data.datasets[i].data.forEach(pt => {
+                const abs = Math.abs(pt.y);
+                if (abs > maxVals[k]) maxVals[k] = abs;
+            });
+        });
+    }
     updateMaxDisplay();
+}
+
+function toggleGravity() {
+    neutralizeGravity = document.getElementById('gravity-toggle').checked;
+    if (!liveChart) return;
+    const ds = liveChart.data.datasets[2]; // Acc Z
+    ds.data.forEach(pt => {
+        pt.y = neutralizeGravity ? pt._raw - 1.0 : pt._raw;
+    });
+    // Recompute max for acc_z
+    maxVals['acc_z'] = 0;
+    ds.data.forEach(pt => {
+        const abs = Math.abs(pt.y);
+        if (abs > maxVals['acc_z']) maxVals['acc_z'] = abs;
+    });
+    updateMaxDisplay();
+    liveChart.update('none');
 }
 
 function connectStream() {
@@ -255,8 +282,10 @@ function connectStream() {
         batch.forEach(s => {
             const t = s.elapsed_s - streamT0;
             KEYS.forEach((k, i) => {
-                liveChart.data.datasets[i].data.push({ x: t, y: s[k] });
-                const abs = Math.abs(s[k]);
+                const raw = s[k];
+                const display = (k === 'acc_z' && neutralizeGravity) ? raw - 1.0 : raw;
+                liveChart.data.datasets[i].data.push({ x: t, y: display, _raw: raw });
+                const abs = Math.abs(display);
                 if (abs > maxVals[k]) maxVals[k] = abs;
             });
         });
@@ -416,6 +445,10 @@ document.addEventListener('DOMContentLoaded', function() {
         <h3>&#128225; Live Sensor Feed</h3>
         <div class="live-controls">
             <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
+            <label style="display:flex;align-items:center;gap:0.3rem;margin:0;cursor:pointer;font-size:0.8rem;color:var(--pico-muted-color);">
+                <input type="checkbox" id="gravity-toggle" onchange="toggleGravity()" style="margin:0;width:auto;">
+                Z−1g
+            </label>
             <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
         </div>
     </div>
