@@ -139,6 +139,7 @@
         .chart-area {
             flex: 1;
             min-height: 0;
+            position: relative;
             background: var(--pico-card-background-color);
             border: 1px solid var(--pico-muted-border-color);
             border-radius: 12px;
@@ -147,7 +148,7 @@
             flex-direction: column;
         }
         .chart-area h4 { margin: 0 0 0.2rem 0; font-size: 0.95rem; }
-        .chart-area canvas { flex: 1; min-height: 0; }
+        .chart-area .chart-container { flex: 1; min-height: 0; position: relative; }
         .chart-placeholder {
             flex: 1;
             display: flex;
@@ -210,7 +211,9 @@
     <div class="chart-area">
         <h4>Sensor Data</h4>
         <div class="chart-placeholder" id="chart-placeholder">Waiting for brew…</div>
-        <canvas id="sensor-chart" style="display:none;"></canvas>
+        <div class="chart-container">
+            <canvas id="sensor-chart" style="display:none;"></canvas>
+        </div>
     </div>
   </div>
 
@@ -273,7 +276,33 @@ function createSensorChart() {
             responsive: true, maintainAspectRatio: false,
             animation: false, parsing: false,
             plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12, padding: 8, font: { size: 11 },
+                        generateLabels: function(chart) {
+                            return chart.data.datasets.map(function(ds, i) {
+                                return {
+                                    text: ds.label,
+                                    fillStyle: ds.borderColor,
+                                    strokeStyle: ds.borderColor,
+                                    lineWidth: 2,
+                                    hidden: !chart.isDatasetVisible(i),
+                                    datasetIndex: i,
+                                    fontColor: chart.isDatasetVisible(i) ? '#ccc' : '#666',
+                                };
+                            });
+                        },
+                    },
+                    onClick: function(e, legendItem, legend) {
+                        var idx = legendItem.datasetIndex;
+                        var chart = legend.chart;
+                        chart.setDatasetVisibility(idx, !chart.isDatasetVisible(idx));
+                        chart.update();
+                    },
+                    onHover: function(e) { e.native.target.style.cursor = 'pointer'; },
+                    onLeave: function(e) { e.native.target.style.cursor = 'default'; },
+                },
                 decimation: { enabled: true, algorithm: 'lttb', samples: 500 }
             },
             scales: {
