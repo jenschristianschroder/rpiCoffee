@@ -107,48 +107,45 @@ async def run_pipeline(
         result["steps_skipped"].append("classifier")
         result["steps_skipped"].append("llm")
         result["steps_skipped"].append("tts")
-        result["steps_skipped"].append("remote-save")
-        result["error"] = "Classification unavailable – pipeline stopped"
-        return result
-
-    result["label"] = classification["label"]
-    result["confidence"] = classification["confidence"]
-    result["steps_completed"].append("classifier")
+        result["error"] = "Classification unavailable"
+    else:
+        result["label"] = classification["label"]
+        result["confidence"] = classification["confidence"]
+        result["steps_completed"].append("classifier")
 
     # ── Step 2: Generate text via llm ────────────────────────────
-    llm_result = await LLMClient.generate(
-        coffee_label=classification["label"],
-        timestamp=now,
-    )
-
-    if llm_result is None:
-        result["steps_skipped"].append("llm")
-        result["steps_skipped"].append("tts")
-        result["steps_skipped"].append("remote-save")
-        result["error"] = "Text generation unavailable – pipeline stopped after classification"
-        return result
-
-    result["text"] = llm_result["response"]
-    result["steps_completed"].append("llm")
+    llm_text: str | None = None
+    if result["label"] is not None:
+        llm_result = await LLMClient.generate(
+            coffee_label=result["label"],
+            timestamp=now,
+        )
+        if llm_result is None:
+            result["steps_skipped"].append("llm")
+            result["steps_skipped"].append("tts")
+            if not result["error"]:
+                result["error"] = "Text generation unavailable"
+        else:
+            llm_text = llm_result["response"]
+            result["text"] = llm_text
+            result["steps_completed"].append("llm")
 
     # ── Step 3: Synthesize speech via tts ─────────────────────────
-    audio_bytes = await TTSClient.synthesize(llm_result["response"])
+    if llm_text is not None:
+        audio_bytes = await TTSClient.synthesize(llm_text)
+        if audio_bytes is None:
+            result["steps_skipped"].append("tts")
+            if not result["error"]:
+                result["error"] = "Speech synthesis unavailable"
+        else:
+            audio_id = uuid.uuid4().hex[:12]
+            audio_path = AUDIO_DIR / f"{audio_id}.wav"
+            AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(audio_bytes)
+            result["audio_url"] = f"/audio/{audio_id}.wav"
+            result["steps_completed"].append("tts")
 
-    if audio_bytes is None:
-        result["steps_skipped"].append("tts")
-        result["steps_skipped"].append("remote-save")
-        result["error"] = "Speech synthesis unavailable – pipeline stopped after text generation"
-        return result
-
-    # Save WAV to disk
-    audio_id = uuid.uuid4().hex[:12]
-    audio_path = AUDIO_DIR / f"{audio_id}.wav"
-    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    audio_path.write_bytes(audio_bytes)
-    result["audio_url"] = f"/audio/{audio_id}.wav"
-    result["steps_completed"].append("tts")
-
-    # ── Step 4: Save results via remote save (non-fatal) ─────────
+    # ── Step 4: Save results via remote save (always attempted) ──
     save_ok = await RemoteSaveClient.save(result, raw_sensor_data)
     if save_ok:
         result["steps_completed"].append("remote-save")
@@ -224,54 +221,54 @@ async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
     classification = await ClassifierClient.classify(all_sensor_data)
 
     if classification is None:
-        result["steps_skipped"].extend(["classifier", "llm", "tts", "remote-save"])
-        result["error"] = "Classification unavailable – pipeline stopped"
-        yield _sse("result", result)
-        return
-
-    result["label"] = classification["label"]
-    result["confidence"] = classification["confidence"]
-    result["steps_completed"].append("classifier")
-    yield _sse("classify", {"label": classification["label"], "confidence": classification["confidence"]})
+        result["steps_skipped"].extend(["classifier", "llm", "tts"])
+        result["error"] = "Classification unavailable"
+    else:
+        result["label"] = classification["label"]
+        result["confidence"] = classification["confidence"]
+        result["steps_completed"].append("classifier")
+        yield _sse("classify", {"label": classification["label"], "confidence": classification["confidence"]})
 
     # ── Step 2: Generate text via llm ────────────────────────────
-    yield _sse("status", {"message": f"Generating text for {classification['label']}…"})
+    llm_text: str | None = None
+    if result["label"] is not None:
+        yield _sse("status", {"message": f"Generating text for {result['label']}…"})
 
-    llm_result = await LLMClient.generate(
-        coffee_label=classification["label"],
-        timestamp=now,
-    )
+        llm_result = await LLMClient.generate(
+            coffee_label=result["label"],
+            timestamp=now,
+        )
 
-    if llm_result is None:
-        result["steps_skipped"].extend(["llm", "tts", "remote-save"])
-        result["error"] = "Text generation unavailable – pipeline stopped after classification"
-        yield _sse("result", result)
-        return
-
-    result["text"] = llm_result["response"]
-    result["steps_completed"].append("llm")
-    yield _sse("text", {"text": llm_result["response"]})
+        if llm_result is None:
+            result["steps_skipped"].extend(["llm", "tts"])
+            if not result["error"]:
+                result["error"] = "Text generation unavailable"
+        else:
+            llm_text = llm_result["response"]
+            result["text"] = llm_text
+            result["steps_completed"].append("llm")
+            yield _sse("text", {"text": llm_text})
 
     # ── Step 3: Synthesize speech via tts ─────────────────────────
-    yield _sse("status", {"message": "Synthesizing speech…"})
+    if llm_text is not None:
+        yield _sse("status", {"message": "Synthesizing speech…"})
 
-    audio_bytes = await TTSClient.synthesize(llm_result["response"])
+        audio_bytes = await TTSClient.synthesize(llm_text)
 
-    if audio_bytes is None:
-        result["steps_skipped"].extend(["tts", "remote-save"])
-        result["error"] = "Speech synthesis unavailable – pipeline stopped after text generation"
-        yield _sse("result", result)
-        return
+        if audio_bytes is None:
+            result["steps_skipped"].append("tts")
+            if not result["error"]:
+                result["error"] = "Speech synthesis unavailable"
+        else:
+            audio_id = uuid.uuid4().hex[:12]
+            audio_path = AUDIO_DIR / f"{audio_id}.wav"
+            AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+            audio_path.write_bytes(audio_bytes)
+            result["audio_url"] = f"/audio/{audio_id}.wav"
+            result["steps_completed"].append("tts")
+            yield _sse("audio", {"audio_url": result["audio_url"]})
 
-    audio_id = uuid.uuid4().hex[:12]
-    audio_path = AUDIO_DIR / f"{audio_id}.wav"
-    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    audio_path.write_bytes(audio_bytes)
-    result["audio_url"] = f"/audio/{audio_id}.wav"
-    result["steps_completed"].append("tts")
-    yield _sse("audio", {"audio_url": result["audio_url"]})
-
-    # ── Step 4: Save results via remote save (non-fatal) ─────────
+    # ── Step 4: Save results via remote save (always attempted) ──
     yield _sse("status", {"message": "Saving results…"})
     save_ok = await RemoteSaveClient.save(result, all_sensor_data)
     if save_ok:
