@@ -19,6 +19,7 @@
     .live-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
     .live-header h3 { margin: 0; }
     .live-controls { display: flex; gap: 0.5rem; align-items: center; }
+    .live-controls input[type="checkbox"] { transform: scale(0.65); margin: 0; }
     .live-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
     .live-dot.on  { background: #22c55e; }
     .live-dot.off { background: #ef4444; }
@@ -472,7 +473,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
             {% if config['SENSOR_ACC_ENABLED'] %}
             <label style="display:flex;align-items:center;gap:0.3rem;margin:0;cursor:pointer;font-size:0.8rem;color:var(--pico-muted-color);">
-                <input type="checkbox" id="gravity-toggle" onchange="toggleGravity()" style="margin:0;width:auto;">
+                <input type="checkbox" id="gravity-toggle" onchange="toggleGravity()" role="switch" style="margin:0;width:auto;height:auto;font-size:0.7rem;">
                 Z−1g
             </label>
             {% endif %}
