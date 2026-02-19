@@ -16,6 +16,11 @@ services:
     volumes:
       - coffee-data:/data
       - ./data:/data/csv-defaults:ro
+    # Uncomment 'devices' on Linux/Raspberry Pi for USB sensor passthrough.
+    # On Windows with Docker Desktop, USB passthrough is not supported;
+    # run the app on the host instead (see run-app-local.bat).
+    # devices:
+    #   - /dev/ttyACM0:/dev/ttyACM0
     networks:
       - coffee-net
     restart: unless-stopped

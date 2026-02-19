@@ -25,25 +25,39 @@ _CLASSIFICATION_FIELDS = ("acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z
 
 async def read_sensor(port: str | None = None) -> list[dict[str, float]]:
     """
-    Read sensor data from the configured serial port.
+    Read sensor data based on the configured SENSOR_MODE.
+
+    Modes
+    -----
+    ``mock``       – read from the mock sensor's in-memory buffer.
+    ``picoquake``  – trigger a forward recording via shared memory and wait.
+    ``serial``     – open a serial port and read CSV lines.
 
     Parameters
     ----------
     port : str, optional
-        Override the serial port path.  If ``"__mock__"``, reads directly
-        from the mock sensor's in-memory buffer (Windows fallback).
-        If None, uses config.SENSOR_SERIAL_PORT.
+        Override the serial port path (serial mode only).
+        ``"__mock__"`` forces mock-buffer mode on Windows.
 
     Returns
     -------
     list of dicts
         Each dict has keys: acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
     """
-    serial_port = port or config.SENSOR_SERIAL_PORT
+    mode = config.SENSOR_MODE
 
-    # Windows mock – bypass serial entirely
-    if serial_port == "__mock__":
+    # Legacy override: if port is explicitly __mock__, use mock
+    if port == "__mock__":
+        mode = "mock"
+
+    if mode == "mock":
         return await _read_from_mock_buffer()
+
+    if mode == "picoquake":
+        return await _read_from_picoquake()
+
+    # mode == "serial" (default fallback)
+    serial_port = port or config.SENSOR_SERIAL_PORT
 
     sample_rate = config.SENSOR_SAMPLE_RATE_HZ
     duration = config.SENSOR_DURATION_S
@@ -72,18 +86,55 @@ async def _read_from_mock_buffer() -> list[dict[str, float]]:
     return list(data)
 
 
+async def _read_from_picoquake() -> list[dict[str, float]]:
+    """Trigger a forward recording on the PicoQuake and wait for data.
+
+    If the acquisition process already completed a capture (auto-trigger set
+    recording_flag to 2), reads the data immediately without re-triggering.
+    """
+    from sensor.picoquake_reader import picoquake_reader
+
+    if not picoquake_reader.is_running:
+        logger.error("PicoQuake acquisition process is not running")
+        return []
+
+    # If a capture is already ready (auto-triggered), just read it
+    if picoquake_reader._ring and picoquake_reader._ring.recording_flag == 2:
+        logger.info("Reading already-captured auto-trigger data")
+        data = picoquake_reader._read_capture()
+        picoquake_reader._ring.recording_flag = 0
+        logger.info("PicoQuake auto-trigger read: %d samples", len(data))
+        return data
+
+    picoquake_reader.trigger_recording()
+    data = await picoquake_reader.wait_for_capture()
+    logger.info("PicoQuake recording complete: %d samples", len(data))
+    return data
+
+
 async def read_sensor_streaming(port: str | None = None):
     """
     Async generator that yields batches of sensor data as they are collected.
 
     Yields list[dict[str, float]] batches (~10 per second).
     """
-    serial_port = port or config.SENSOR_SERIAL_PORT
+    mode = config.SENSOR_MODE
 
-    if serial_port == "__mock__":
+    if port == "__mock__":
+        mode = "mock"
+
+    if mode == "mock":
         async for batch in _stream_from_mock_buffer():
             yield batch
         return
+
+    if mode == "picoquake":
+        async for batch in _stream_from_picoquake():
+            yield batch
+        return
+
+    # serial mode
+    serial_port = port or config.SENSOR_SERIAL_PORT
 
     sample_rate = config.SENSOR_SAMPLE_RATE_HZ
     duration = config.SENSOR_DURATION_S
@@ -157,6 +208,20 @@ def _blocking_read_to_queue(
         if batch:
             queue.put_nowait(batch)
         queue.put_nowait(None)  # sentinel
+
+
+async def _stream_from_picoquake():
+    """Stream PicoQuake recording progressively via shared memory."""
+    from sensor.picoquake_reader import picoquake_reader
+
+    if not picoquake_reader.is_running:
+        logger.error("PicoQuake acquisition process is not running")
+        return
+
+    picoquake_reader.trigger_recording()
+    async for batch in picoquake_reader.stream_capture(batch_interval=0.1):
+        yield batch
+    logger.info("PicoQuake stream capture complete")
 
 
 async def _stream_from_mock_buffer():

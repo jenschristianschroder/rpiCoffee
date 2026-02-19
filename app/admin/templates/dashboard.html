@@ -25,9 +25,45 @@ async function checkServices() {
                 dot.className = 'status-dot red';
                 dot.title = info.error || 'Unhealthy';
             }
+            // Show sensor error detail below the status dot
+            if (svc === 'sensor') {
+                const errEl = document.getElementById('sensor-error');
+                if (errEl) {
+                    if (info.error) {
+                        errEl.textContent = info.error;
+                        errEl.style.display = 'inline';
+                    } else {
+                        errEl.style.display = 'none';
+                    }
+                }
+            }
         }
     } catch (e) {
         console.error('Status check failed', e);
+    }
+}
+
+async function restartSensor() {
+    const errEl = document.getElementById('sensor-error');
+    if (errEl) { errEl.textContent = 'Restarting…'; errEl.style.display = 'inline'; }
+    try {
+        const r = await fetch('/api/sensor/restart', { method: 'POST' });
+        if (!r.ok) {
+            const text = await r.text();
+            if (errEl) { errEl.textContent = 'Restart failed (HTTP ' + r.status + ')'; }
+            return;
+        }
+        const info = await r.json();
+        if (errEl) {
+            if (info.healthy) {
+                errEl.style.display = 'none';
+            } else {
+                errEl.textContent = info.error || 'Failed to start';
+            }
+        }
+        checkServices();
+    } catch (e) {
+        if (errEl) { errEl.textContent = 'Restart failed: ' + e.message; }
     }
 }
 
@@ -181,8 +217,12 @@ document.addEventListener('DOMContentLoaded', checkServices);
     <h3>Service Status</h3>
     <div class="grid">
         <div>
-            <span id="status-sensor_mock" class="status-dot gray" title="Checking…"></span>
-            <strong>sensor</strong> <small>(mock)</small>
+            <span id="status-sensor" class="status-dot gray" title="Checking…"></span>
+            <strong>sensor</strong> <small>({{ config['SENSOR_MODE'] }})</small>
+            {% if config['SENSOR_MODE'] == 'picoquake' %}
+            <button onclick="restartSensor()" style="margin-left:0.5rem;padding:0.15rem 0.5rem;font-size:0.75rem;">&#8635; Restart</button>
+            {% endif %}
+            <small id="sensor-error" style="color:var(--pico-del-color);display:none;margin-left:0.5rem;"></small>
         </div>
         <div>
             <span id="status-classifier" class="status-dot gray" title="Checking…"></span>
@@ -318,22 +358,40 @@ document.addEventListener('DOMContentLoaded', checkServices);
         <fieldset>
             <legend><strong>Sensor</strong></legend>
             <div class="grid">
-                <label>
-                    Mock Enabled
-                    <input type="checkbox" name="SENSOR_MOCK_ENABLED" role="switch"
-                           {% if config['SENSOR_MOCK_ENABLED'] %}checked{% endif %}>
+                <label for="SENSOR_MODE">Mode
+                    <select id="SENSOR_MODE" name="SENSOR_MODE">
+                        <option value="mock" {% if config['SENSOR_MODE'] == 'mock' %}selected{% endif %}>Mock (CSV replay)</option>
+                        <option value="picoquake" {% if config['SENSOR_MODE'] == 'picoquake' %}selected{% endif %}>PicoQuake (USB sensor)</option>
+                        <option value="serial" {% if config['SENSOR_MODE'] == 'serial' %}selected{% endif %}>Serial (raw CSV)</option>
+                    </select>
                 </label>
-                <label for="SENSOR_SERIAL_PORT">Serial Port
-                    <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}">
+                <label for="SENSOR_DEVICE_ID">Device ID
+                    <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}" placeholder="e.g. cf79">
                 </label>
             </div>
             <div class="grid">
+                <label for="SENSOR_SERIAL_PORT">Serial Port
+                    <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}">
+                </label>
                 <label for="SENSOR_SAMPLE_RATE_HZ">Sample Rate (Hz)
                     <input type="number" id="SENSOR_SAMPLE_RATE_HZ" name="SENSOR_SAMPLE_RATE_HZ" value="{{ config['SENSOR_SAMPLE_RATE_HZ'] }}">
                 </label>
+            </div>
+            <div class="grid">
                 <label for="SENSOR_DURATION_S">Duration (s)
                     <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}">
                 </label>
+                <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
+                    <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.1">
+                </label>
+            </div>
+            <div class="grid">
+                <label>
+                    Auto-Trigger
+                    <input type="checkbox" name="SENSOR_AUTO_TRIGGER" role="switch"
+                           {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
+                </label>
+                <div></div>
             </div>
         </fieldset>
 

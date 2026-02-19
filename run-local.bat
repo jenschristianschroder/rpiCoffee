@@ -24,7 +24,7 @@ set CLASSIFIER_ENDPOINT=http://localhost:8001
 set LLM_ENDPOINT=http://localhost:8000
 set TTS_ENDPOINT=http://localhost:5000
 set REMOTE_SAVE_ENDPOINT=http://localhost:7000
-set SENSOR_MOCK_ENABLED=true
+set SENSOR_MODE=mock
 set SETTINGS_DIR=%ROOT%data
 set DATA_DIR=%ROOT%data
 
@@ -36,7 +36,7 @@ start "llm" cmd /k "cd /d %ROOT%services\llm && call %VENV% && python server.py 
 
 echo [*] Starting main app on port 8080...
 timeout /t 2 >nul
-start "rpicoffee-app" cmd /k "cd /d %ROOT%app && call %VENV% && set CLASSIFIER_ENDPOINT=http://localhost:8001 && set LLM_ENDPOINT=http://localhost:8000 && set TTS_ENDPOINT=http://localhost:5000 && set REMOTE_SAVE_ENDPOINT=http://localhost:7000 && set SENSOR_MOCK_ENABLED=true && set SETTINGS_DIR=%ROOT%data && set DATA_DIR=%ROOT%data && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+start "rpicoffee-app" cmd /k "cd /d %ROOT%app && call %VENV% && set CLASSIFIER_ENDPOINT=http://localhost:8001 && set LLM_ENDPOINT=http://localhost:8000 && set TTS_ENDPOINT=http://localhost:5000 && set REMOTE_SAVE_ENDPOINT=http://localhost:7000 && set SENSOR_MODE=mock && set SETTINGS_DIR=%ROOT%data && set DATA_DIR=%ROOT%data && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
 
 echo.
 echo ========================================

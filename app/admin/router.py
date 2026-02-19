@@ -24,11 +24,12 @@ _EDITABLE_KEYS = [
     "CLASSIFIER_ENABLED", "CLASSIFIER_ENDPOINT",
     "REMOTE_SAVE_ENABLED", "REMOTE_SAVE_ENDPOINT",
     "LLM_MAX_TOKENS", "LLM_TEMPERATURE", "LLM_TOP_P", "LLM_TTS",
-    "SENSOR_MOCK_ENABLED", "SENSOR_SERIAL_PORT",
+    "SENSOR_MODE", "SENSOR_DEVICE_ID", "SENSOR_SERIAL_PORT",
     "SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S",
+    "SENSOR_VIBRATION_THRESHOLD", "SENSOR_AUTO_TRIGGER",
 ]
 
-_BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_MOCK_ENABLED", "LLM_TTS", "REMOTE_SAVE_ENABLED"}
+_BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_TRIGGER", "LLM_TTS", "REMOTE_SAVE_ENABLED"}
 
 
 def _get_signer() -> URLSafeSerializer:
@@ -92,6 +93,11 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
     })
 
 
+# Keys whose change requires a sensor restart
+_SENSOR_KEYS = {"SENSOR_MODE", "SENSOR_DEVICE_ID", "SENSOR_SAMPLE_RATE_HZ",
+                "SENSOR_DURATION_S", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_AUTO_TRIGGER"}
+
+
 # ── Settings update ─────────────────────────────────────────────
 
 @router.post("/settings")
@@ -102,6 +108,9 @@ async def update_settings(request: Request, session: str | None = Cookie(default
     form = await request.form()
     updates: dict = {}
 
+    # Snapshot current sensor config for change detection
+    old_sensor = {k: config.get(k) for k in _SENSOR_KEYS}
+
     for key in _EDITABLE_KEYS:
         if key in _BOOL_KEYS:
             # Checkboxes: present = true, absent = false
@@ -111,6 +120,16 @@ async def update_settings(request: Request, session: str | None = Cookie(default
 
     config.update_many(updates)
     logger.info("Settings updated: %s", list(updates.keys()))
+
+    # If any sensor-related setting changed, restart the sensor
+    new_sensor = {k: config.get(k) for k in _SENSOR_KEYS}
+    if old_sensor != new_sensor:
+        logger.info("Sensor settings changed – restarting sensor")
+        from main import restart_sensor
+        try:
+            await restart_sensor()
+        except Exception:
+            logger.exception("Failed to restart sensor after settings change")
 
     return RedirectResponse(url="/admin/?message=Settings+saved", status_code=303)
 

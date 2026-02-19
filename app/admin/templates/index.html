@@ -167,7 +167,7 @@
 <div class="topbar">
     <span class="title">&#9749; rpiCoffee</span>
     <div class="status-dots">
-        <div class="status-item"><span class="dot gray" id="s-sensor_mock"></span>sensor</div>
+        <div class="status-item"><span class="dot gray" id="s-sensor"></span>sensor</div>
         <div class="status-item"><span class="dot gray" id="s-classifier"></span>classifier</div>
         <div class="status-item"><span class="dot gray" id="s-llm"></span>text gen</div>
         <div class="status-item"><span class="dot gray" id="s-tts"></span>TTS</div>
@@ -383,7 +383,77 @@ function showResult(data) {
 
     el.innerHTML = html;
     el.style.display = '';
+    document.getElementById('result-placeholder').style.display = 'none';
 }
+
+// ── Auto-trigger SSE listener ─────────────────────────────────
+// Listens for vibration-triggered brew results from the server
+(function connectAutoTrigger() {
+    const es = new EventSource('/api/auto-trigger/stream');
+    const keys = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
+    let newRecording = false;
+
+    es.addEventListener('status', function(e) {
+        const msg = JSON.parse(e.data);
+        const statusEl = document.getElementById('brew-status');
+        statusEl.textContent = msg || 'Vibration detected…';
+        statusEl.style.display = '';
+        statusEl.setAttribute('aria-busy', 'true');
+        document.getElementById('brew-btn').disabled = true;
+
+        // Only prepare chart when a NEW recording starts (not "Recording complete")
+        if (typeof msg === 'string' && msg.indexOf('Recording sensor data') !== -1) {
+            const chartCanvas = document.getElementById('sensor-chart');
+            const chartPlaceholder = document.getElementById('chart-placeholder');
+            chartPlaceholder.style.display = 'none';
+            chartCanvas.style.display = '';
+            if (!sensorChart) createSensorChart();
+            sensorChart.data.datasets.forEach(ds => ds.data = []);
+            sensorChart.update();
+            newRecording = true;
+        }
+    });
+
+    es.addEventListener('sensor_data', function(e) {
+        const batch = JSON.parse(e.data);
+        const chartCanvas = document.getElementById('sensor-chart');
+        const chartPlaceholder = document.getElementById('chart-placeholder');
+        chartPlaceholder.style.display = 'none';
+        chartCanvas.style.display = '';
+        if (!sensorChart) createSensorChart();
+        // Clear chart on first batch of a new recording
+        if (newRecording) {
+            sensorChart.data.datasets.forEach(ds => ds.data = []);
+            newRecording = false;
+        }
+        // Append new batch (progressive streaming)
+        for (let i = 0; i < batch.length; i++) {
+            const s = batch[i];
+            const t = s.elapsed_s !== undefined ? s.elapsed_s : 0;
+            keys.forEach((k, di) => sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }));
+        }
+        sensorChart.update('none');
+    });
+
+    es.addEventListener('result', function(e) {
+        const data = JSON.parse(e.data);
+        showResult(data);
+        const statusEl = document.getElementById('brew-status');
+        statusEl.textContent = '';
+        statusEl.style.display = 'none';
+        statusEl.removeAttribute('aria-busy');
+        document.getElementById('brew-btn').disabled = false;
+    });
+
+    es.addEventListener('connected', function() {
+        console.log('Auto-trigger SSE connected');
+    });
+
+    es.onerror = function() {
+        // EventSource auto-reconnects
+        console.warn('Auto-trigger SSE disconnected, will retry…');
+    };
+})();
 </script>
 </body>
 </html>

@@ -35,9 +35,17 @@ logger = logging.getLogger("rpicoffee.pipeline")
 AUDIO_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))) / "audio"
 
 
-async def run_pipeline() -> dict[str, Any]:
+async def run_pipeline(
+    sensor_data: list[dict[str, float]] | None = None,
+) -> dict[str, Any]:
     """
     Run the full brew pipeline and return a result dict.
+
+    Parameters
+    ----------
+    sensor_data : list of dicts, optional
+        Pre-collected sensor data (e.g. from auto-trigger streaming).
+        When provided the sensor-read step is skipped.
 
     Returns
     -------
@@ -67,12 +75,14 @@ async def run_pipeline() -> dict[str, Any]:
 
     # ── Step 0: Collect sensor data ──────────────────────────────
     try:
-        port = None
-        if config.SENSOR_MOCK_ENABLED:
-            port = mock_sensor.start()
-            logger.info("Using mock sensor on %s", port)
+        if sensor_data is None:
+            port = None
+            if config.SENSOR_MODE == "mock":
+                port = mock_sensor.start()
+                logger.info("Using mock sensor on %s", port)
 
-        sensor_data = await read_sensor(port=port)
+            sensor_data = await read_sensor(port=port)
+
         result["sensor_samples"] = len(sensor_data)
 
         if not sensor_data:
@@ -184,7 +194,7 @@ async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
     all_sensor_data: list[dict[str, float]] = []
     try:
         port = None
-        if config.SENSOR_MOCK_ENABLED:
+        if config.SENSOR_MODE == "mock":
             port = mock_sensor.start()
             logger.info("Using mock sensor on %s", port)
 
