@@ -37,6 +37,11 @@
         .dot.green { background: #22c55e; }
         .dot.red   { background: #ef4444; }
         .dot.gray  { background: #9ca3af; }
+        @keyframes dot-blink {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.2; }
+        }
+        .dot.blink { animation: dot-blink 0.8s ease-in-out infinite; }
 
         /* ── Layout ─────────────────────────────────── */
         .kiosk-body {
@@ -282,6 +287,33 @@ function createSensorChart() {
     });
 }
 
+// ── Pipeline stage → dot blinking ─────────────────────────────
+const _stageMap = [
+    { pattern: 'Collecting sensor data', dot: 's-sensor' },
+    { pattern: 'Recording sensor data',  dot: 's-sensor' },
+    { pattern: 'Running pipeline',       dot: 's-classifier' },
+    { pattern: 'Classifying',            dot: 's-classifier' },
+    { pattern: 'Generating text',        dot: 's-llm' },
+    { pattern: 'Synthesizing speech',    dot: 's-tts' },
+    { pattern: 'Saving results',         dot: 's-remote_save' },
+];
+
+function clearAllBlinks() {
+    document.querySelectorAll('.dot.blink').forEach(d => d.classList.remove('blink'));
+}
+
+function setActiveDot(msg) {
+    clearAllBlinks();
+    if (!msg) return;
+    for (const s of _stageMap) {
+        if (msg.indexOf(s.pattern) !== -1) {
+            const el = document.getElementById(s.dot);
+            if (el) el.classList.add('blink');
+            break;
+        }
+    }
+}
+
 // ── Brew ──────────────────────────────────────────────────────
 function brew() {
     const btn = document.getElementById('brew-btn');
@@ -319,7 +351,9 @@ function brew() {
     });
 
     es.addEventListener('status', function(e) {
-        statusEl.textContent = JSON.parse(e.data).message;
+        const msg = JSON.parse(e.data).message;
+        statusEl.textContent = msg;
+        setActiveDot(msg);
     });
 
     es.addEventListener('classify', function(e) {
@@ -342,6 +376,7 @@ function brew() {
 
     es.addEventListener('result', function(e) {
         es.close();
+        clearAllBlinks();
         const data = JSON.parse(e.data);
         // Append final meta line
         let meta = '<p class="meta">Steps: ' + (data.steps_completed.join(' \u2192 ') || 'none');
@@ -355,6 +390,7 @@ function brew() {
 
     es.onerror = function() {
         es.close();
+        clearAllBlinks();
         statusEl.textContent = 'Connection lost';
         btn.disabled = false;
     };
@@ -400,6 +436,7 @@ function showResult(data) {
         statusEl.style.display = '';
         statusEl.setAttribute('aria-busy', 'true');
         document.getElementById('brew-btn').disabled = true;
+        setActiveDot(typeof msg === 'string' ? msg : '');
 
         // Only prepare chart when a NEW recording starts (not "Recording complete")
         if (typeof msg === 'string' && msg.indexOf('Recording sensor data') !== -1) {
@@ -437,6 +474,7 @@ function showResult(data) {
 
     es.addEventListener('result', function(e) {
         const data = JSON.parse(e.data);
+        clearAllBlinks();
         showResult(data);
         const statusEl = document.getElementById('brew-status');
         statusEl.textContent = '';

@@ -92,7 +92,10 @@ async def _auto_trigger_loop():
                             len(all_sensor_data))
                 _broadcast({"type": "status", "message": "Recording complete. Running pipeline…"})
 
-                result = await run_pipeline(sensor_data=all_sensor_data)
+                def _progress(msg: str) -> None:
+                    _broadcast({"type": "status", "message": msg})
+
+                result = await run_pipeline(sensor_data=all_sensor_data, on_progress=_progress)
                 result.pop("sensor_data", None)  # already streamed to chart
 
                 _broadcast({"type": "result", "data": result})

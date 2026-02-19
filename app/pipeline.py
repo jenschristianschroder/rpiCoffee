@@ -37,6 +37,7 @@ AUDIO_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.
 
 async def run_pipeline(
     sensor_data: list[dict[str, float]] | None = None,
+    on_progress: Any | None = None,
 ) -> dict[str, Any]:
     """
     Run the full brew pipeline and return a result dict.
@@ -101,6 +102,8 @@ async def run_pipeline(
         return result
 
     # ── Step 1: Classify via classifier ───────────────────────────
+    if on_progress:
+        on_progress("Classifying coffee type…")
     classification = await ClassifierClient.classify(sensor_data)
 
     if classification is None:
@@ -116,6 +119,8 @@ async def run_pipeline(
     # ── Step 2: Generate text via llm ────────────────────────────
     llm_text: str | None = None
     if result["label"] is not None:
+        if on_progress:
+            on_progress(f"Generating text for {result['label']}…")
         llm_result = await LLMClient.generate(
             coffee_label=result["label"],
             timestamp=now,
@@ -132,6 +137,8 @@ async def run_pipeline(
 
     # ── Step 3: Synthesize speech via tts ─────────────────────────
     if llm_text is not None:
+        if on_progress:
+            on_progress("Synthesizing speech…")
         audio_bytes = await TTSClient.synthesize(llm_text)
         if audio_bytes is None:
             result["steps_skipped"].append("tts")
@@ -146,6 +153,8 @@ async def run_pipeline(
             result["steps_completed"].append("tts")
 
     # ── Step 4: Save results via remote save (always attempted) ──
+    if on_progress:
+        on_progress("Saving results…")
     save_ok = await RemoteSaveClient.save(result, raw_sensor_data)
     if save_ok:
         result["steps_completed"].append("remote-save")
