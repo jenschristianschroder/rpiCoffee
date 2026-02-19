@@ -248,6 +248,8 @@ def main_acquisition():
                         help="RMS accel threshold (g) for auto-trigger")
     parser.add_argument("--duration", type=int, default=30,
                         help="Recording window in seconds (forward capture)")
+    parser.add_argument("--rms-window", type=float, default=1.0,
+                        help="RMS averaging window in seconds (e.g. 0.2 for faster trigger)")
     parser.add_argument("--window", "-w", type=int, default=60,
                         help="Ring buffer length in seconds")
     args = parser.parse_args()
@@ -297,7 +299,7 @@ def main_acquisition():
     samples_since_log = 0
 
     # Auto-trigger state
-    rms_window_size = args.rate  # 1 second of accel data for RMS
+    rms_window_size = max(1, int(args.rate * args.rms_window))  # configurable RMS window
     recent_accel: list[float] = []
     recording_count = 0  # samples captured since recording started
 

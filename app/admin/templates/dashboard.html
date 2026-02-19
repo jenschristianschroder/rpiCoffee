@@ -382,16 +382,19 @@ document.addEventListener('DOMContentLoaded', checkServices);
                     <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}">
                 </label>
                 <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
-                    <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.1">
+                    <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.001">
                 </label>
             </div>
             <div class="grid">
+                <label for="SENSOR_RMS_WINDOW_S">RMS Window (s)
+                    <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
+                    <small>Averaging window for trigger detection (lower = faster, noisier)</small>
+                </label>
                 <label>
                     Auto-Trigger
                     <input type="checkbox" name="SENSOR_AUTO_TRIGGER" role="switch"
                            {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
                 </label>
-                <div></div>
             </div>
         </fieldset>
 

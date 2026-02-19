@@ -146,6 +146,7 @@ def _start_sensor() -> None:
         sample_rate=cfg.get("SENSOR_SAMPLE_RATE_HZ", 100),
         duration=cfg.get("SENSOR_DURATION_S", 30),
         threshold=cfg.get("SENSOR_VIBRATION_THRESHOLD", 2.0),
+        rms_window_s=cfg.get("SENSOR_RMS_WINDOW_S", 1.0),
     )
     _sensor_started = True
 
