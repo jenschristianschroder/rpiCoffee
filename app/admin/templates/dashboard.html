@@ -7,6 +7,27 @@
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+    .max-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
+    .max-card { background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color);
+                border-radius: 8px; padding: 0.6rem 0.4rem; text-align: center; }
+    .max-card .lbl  { font-size: 0.7rem; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.5px; }
+    .max-card .val  { font-size: 1.3rem; font-weight: 700; font-family: monospace; }
+    .max-card.c0 .val { color: #ef4444; } .max-card.c1 .val { color: #f97316; }
+    .max-card.c2 .val { color: #eab308; } .max-card.c3 .val { color: #22c55e; }
+    .max-card.c4 .val { color: #3b82f6; } .max-card.c5 .val { color: #8b5cf6; }
+    .live-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+    .live-header h3 { margin: 0; }
+    .live-controls { display: flex; gap: 0.5rem; align-items: center; }
+    .live-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
+    .live-dot.on  { background: #22c55e; }
+    .live-dot.off { background: #ef4444; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .live-dot.on { animation: pulse-dot 1.2s ease-in-out infinite; }
+    .chart-wrap { position: relative; height: 280px; margin-bottom: 0.5rem; }
+    .stream-meta { font-size: 0.8rem; color: var(--pico-muted-color); text-align: right; }
+    @media (max-width: 700px) { .max-grid { grid-template-columns: repeat(3, 1fr); } }
+</style>
 <script>
 async function checkServices() {
     try {
@@ -25,7 +46,6 @@ async function checkServices() {
                 dot.className = 'status-dot red';
                 dot.title = info.error || 'Unhealthy';
             }
-            // Show sensor error detail below the status dot
             if (svc === 'sensor') {
                 const errEl = document.getElementById('sensor-error');
                 if (errEl) {
@@ -49,7 +69,6 @@ async function restartSensor() {
     try {
         const r = await fetch('/api/sensor/restart', { method: 'POST' });
         if (!r.ok) {
-            const text = await r.text();
             if (errEl) { errEl.textContent = 'Restart failed (HTTP ' + r.status + ')'; }
             return;
         }
@@ -62,11 +81,14 @@ async function restartSensor() {
             }
         }
         checkServices();
+        // Reconnect live stream after restart
+        setTimeout(connectStream, 1500);
     } catch (e) {
         if (errEl) { errEl.textContent = 'Restart failed: ' + e.message; }
     }
 }
 
+// ── Brew pipeline ──────────────────────────────────────────
 async function brew() {
     const btn = document.getElementById('brew-btn');
     const result = document.getElementById('brew-result');
@@ -75,37 +97,14 @@ async function brew() {
     result.innerHTML = '';
     result.className = 'pipeline-result';
 
-    // Show chart immediately
-    const chartCard = document.getElementById('sensor-card');
-    const placeholder = document.getElementById('sensor-placeholder');
-    chartCard.style.display = '';
-    placeholder.style.display = 'none';
-    if (!sensorChart) createSensorChart();
-    sensorChart.data.datasets.forEach(ds => ds.data = []);
-    sensorChart.update();
-
-    // Show live status
     const statusEl = document.getElementById('brew-status');
     statusEl.textContent = 'Collecting sensor data…';
     statusEl.style.display = '';
 
-    const keys = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
-    let sampleIdx = 0;
-
     const es = new EventSource('/api/brew/stream');
 
-    es.addEventListener('sensor', function(e) {
-        const batch = JSON.parse(e.data);
-        for (const s of batch) {
-            const t = s.elapsed_s !== undefined ? s.elapsed_s : sampleIdx++ * 0.01;
-            keys.forEach((k, di) => sensorChart.data.datasets[di].data.push({ x: t, y: s[k] }));
-        }
-        sensorChart.update('none');
-    });
-
     es.addEventListener('status', function(e) {
-        const msg = JSON.parse(e.data);
-        statusEl.textContent = msg.message;
+        statusEl.textContent = JSON.parse(e.data).message;
     });
 
     es.addEventListener('classify', function(e) {
@@ -127,18 +126,11 @@ async function brew() {
         es.close();
         statusEl.style.display = 'none';
         const data = JSON.parse(e.data);
-
         let meta = '<h4>Pipeline Result</h4>';
         meta += '<p><strong>Steps completed:</strong> ' + (data.steps_completed.join(' → ') || 'none') + '</p>';
-        if (data.steps_skipped.length) {
-            meta += '<p><strong>Steps skipped:</strong> ' + data.steps_skipped.join(', ') + '</p>';
-        }
-        if (data.error) {
-            meta += '<p style="color:var(--pico-del-color);"><strong>Note:</strong> ' + data.error + '</p>';
-        }
+        if (data.steps_skipped.length) meta += '<p><strong>Steps skipped:</strong> ' + data.steps_skipped.join(', ') + '</p>';
+        if (data.error) meta += '<p style="color:var(--pico-del-color);"><strong>Note:</strong> ' + data.error + '</p>';
         meta += '<p><small>Sensor samples: ' + data.sensor_samples + '</small></p>';
-
-        // Prepend summary before the incremental content
         result.insertAdjacentHTML('afterbegin', meta);
         result.className = data.error ? 'pipeline-result error' : 'pipeline-result';
         btn.removeAttribute('aria-busy');
@@ -155,53 +147,187 @@ async function brew() {
     };
 }
 
-// ── Sensor chart ────────────────────────────────────────────
-let sensorChart = null;
+// ── Live sensor chart ──────────────────────────────────────
+let WINDOW_S = {{ config['SENSOR_CHART_WINDOW_S'] }};
+const KEYS = ['acc_x','acc_y','acc_z','gyro_x','gyro_y','gyro_z'];
+const COLORS = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6'];
+const LABELS = ['Acc X','Acc Y','Acc Z','Gyro X','Gyro Y','Gyro Z'];
 
-function createSensorChart() {
-    const ctx = document.getElementById('sensor-chart').getContext('2d');
-    const axes = [
-        { key: 'acc_x',  label: 'Accel X',  color: '#ef4444', dash: [] },
-        { key: 'acc_y',  label: 'Accel Y',  color: '#f97316', dash: [] },
-        { key: 'acc_z',  label: 'Accel Z',  color: '#eab308', dash: [] },
-        { key: 'gyro_x', label: 'Gyro X',   color: '#22c55e', dash: [] },
-        { key: 'gyro_y', label: 'Gyro Y',   color: '#3b82f6', dash: [] },
-        { key: 'gyro_z', label: 'Gyro Z',   color: '#8b5cf6', dash: [] },
-    ];
-    sensorChart = new Chart(ctx, {
+let liveChart = null;
+let evtSource = null;
+let livePaused = true;
+let streamT0 = null;
+const maxVals = { acc_x: 0, acc_y: 0, acc_z: 0, gyro_x: 0, gyro_y: 0, gyro_z: 0 };
+
+function createLiveChart() {
+    const ctx = document.getElementById('live-chart').getContext('2d');
+    liveChart = new Chart(ctx, {
         type: 'line',
         data: {
-            datasets: axes.map(a => ({
-                label: a.label,
-                data: [],
-                borderColor: a.color,
-                borderWidth: 1.5,
-                borderDash: a.dash,
-                pointRadius: 0,
-                tension: 0.25,
-                fill: false
+            datasets: LABELS.map((l, i) => ({
+                label: l, data: [],
+                borderColor: COLORS[i], borderWidth: 1.5,
+                pointRadius: 0, tension: 0.2, fill: false,
             }))
         },
         options: {
-            responsive: true,
-            animation: false,
-            parsing: false,
-            plugins: { legend: { position: 'bottom', labels: { boxWidth: 14, padding: 10 } },
-                       decimation: { enabled: true, algorithm: 'lttb', samples: 500 } },
+            responsive: true, maintainAspectRatio: false,
+            animation: false, parsing: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, padding: 8, font: { size: 11 }, usePointStyle: false },
+                    onHover: function(e) { e.native.target.style.cursor = 'pointer'; },
+                    onLeave: function(e) { e.native.target.style.cursor = 'default'; },
+                },
+                decimation: { enabled: true, algorithm: 'lttb', samples: 600 }
+            },
             scales: {
-                x: { type: 'linear', min: 0, max: 30,
-                     title: { display: true, text: 'Time (s)' },
-                     ticks: { stepSize: 5 } },
+                x: { type: 'linear', title: { display: true, text: 'Time (s)' }, ticks: { stepSize: 5 } },
                 y: { title: { display: true, text: 'Value' } }
             }
         }
     });
-    return sensorChart;
 }
 
-// Poll service health every 10s
+function updateMaxDisplay() {
+    KEYS.forEach(k => {
+        const el = document.getElementById('max-' + k);
+        if (el) el.textContent = maxVals[k].toFixed(3);
+    });
+}
+
+function resetMax() {
+    KEYS.forEach(k => { maxVals[k] = 0; });
+    updateMaxDisplay();
+}
+
+function connectStream() {
+    if (evtSource) evtSource.close();
+    streamT0 = null;
+    if (liveChart) {
+        liveChart.data.datasets.forEach(ds => ds.data = []);
+        liveChart.update('none');
+    }
+    document.getElementById('live-dot').className = 'live-dot on';
+    document.getElementById('live-label').textContent = 'Connecting…';
+
+    evtSource = new EventSource('/api/sensor/stream');
+
+    evtSource.onmessage = function(e) {
+        if (livePaused) return;
+        const batch = JSON.parse(e.data);
+        if (!batch.length) return;
+
+        if (streamT0 === null) streamT0 = batch[0].elapsed_s;
+
+        batch.forEach(s => {
+            const t = s.elapsed_s - streamT0;
+            KEYS.forEach((k, i) => {
+                liveChart.data.datasets[i].data.push({ x: t, y: s[k] });
+                const abs = Math.abs(s[k]);
+                if (abs > maxVals[k]) maxVals[k] = abs;
+            });
+        });
+
+        // Trim to rolling window
+        const latest = liveChart.data.datasets[0].data.length
+            ? liveChart.data.datasets[0].data[liveChart.data.datasets[0].data.length - 1].x : 0;
+        const cutoff = latest - WINDOW_S;
+        liveChart.data.datasets.forEach(ds => {
+            while (ds.data.length > 0 && ds.data[0].x < cutoff) ds.data.shift();
+        });
+        liveChart.options.scales.x.min = cutoff > 0 ? cutoff : 0;
+        liveChart.options.scales.x.max = latest;
+        liveChart.update('none');
+
+        updateMaxDisplay();
+        document.getElementById('live-dot').className = 'live-dot on';
+        document.getElementById('live-label').textContent = 'Live';
+        document.getElementById('sample-count').textContent = liveChart.data.datasets[0].data.length;
+    };
+
+    evtSource.addEventListener('error', function(e) {
+        // Check for custom error events from our endpoint
+        if (e.data) {
+            document.getElementById('live-label').textContent = 'Error: ' + JSON.parse(e.data);
+        } else {
+            document.getElementById('live-label').textContent = 'Disconnected – retrying…';
+        }
+        document.getElementById('live-dot').className = 'live-dot off';
+    });
+}
+
+function togglePause() {
+    livePaused = !livePaused;
+    const btn = document.getElementById('pause-btn');
+    const dot = document.getElementById('live-dot');
+    const lbl = document.getElementById('live-label');
+    if (livePaused) {
+        btn.textContent = '▶ Resume';
+        dot.className = 'live-dot off';
+        lbl.textContent = 'Paused';
+    } else {
+        btn.textContent = '⏸ Pause';
+        // Clear stale data on resume so chart doesn't jump
+        liveChart.data.datasets.forEach(ds => ds.data = []);
+        streamT0 = null;
+        liveChart.update('none');
+        dot.className = 'live-dot on';
+        lbl.textContent = 'Live';
+    }
+}
+
+// ── Sensor config save (JSON) ──────────────────────────────
+async function saveSensorConfig(e) {
+    e.preventDefault();
+    const form = document.getElementById('sensor-config-form');
+    const fd = new FormData(form);
+    const body = {};
+    fd.forEach((v, k) => { body[k] = v; });
+
+    const status = document.getElementById('config-status');
+    status.textContent = 'Saving…';
+    status.style.color = 'var(--pico-muted-color)';
+
+    try {
+        const res = await fetch('/admin/sensor-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error('Save failed (' + res.status + ')');
+        status.textContent = 'Saved. Restarting sensor…';
+        status.style.color = '#22c55e';
+
+        // Apply chart window immediately
+        const newWindow = parseInt(body['SENSOR_CHART_WINDOW_S']);
+        if (newWindow > 0) WINDOW_S = newWindow;
+
+        const r2 = await fetch('/api/sensor/restart', { method: 'POST' });
+        if (!r2.ok) throw new Error('Restart failed');
+        status.textContent = '✓ Sensor restarted';
+
+        setTimeout(() => {
+            liveChart.data.datasets.forEach(ds => ds.data = []);
+            streamT0 = null;
+            connectStream();
+            checkServices();
+            status.textContent = '';
+        }, 1500);
+    } catch (err) {
+        status.textContent = '✗ ' + err.message;
+        status.style.color = '#ef4444';
+    }
+}
+
+// ── Init ───────────────────────────────────────────────────
 setInterval(checkServices, 10000);
-document.addEventListener('DOMContentLoaded', checkServices);
+document.addEventListener('DOMContentLoaded', function() {
+    checkServices();
+    createLiveChart();
+    connectStream();
+});
 </script>
 {% endblock %}
 
@@ -252,14 +378,93 @@ document.addEventListener('DOMContentLoaded', checkServices);
     <div id="brew-result"></div>
 </div>
 
-<!-- Sensor Data Chart -->
-<div class="card" id="sensor-card" style="display:none;">
-    <h3>Sensor Data</h3>
-    <canvas id="sensor-chart" height="120"></canvas>
+<!-- Live Sensor Testing -->
+<div class="card">
+    <div class="live-header">
+        <h3>&#128225; Live Sensor Feed</h3>
+        <div class="live-controls">
+            <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
+            <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
+        </div>
+    </div>
+
+    <!-- Max values -->
+    <div class="max-grid">
+        <div class="max-card c0"><div class="lbl">Acc X max</div><div class="val" id="max-acc_x">0.000</div></div>
+        <div class="max-card c1"><div class="lbl">Acc Y max</div><div class="val" id="max-acc_y">0.000</div></div>
+        <div class="max-card c2"><div class="lbl">Acc Z max</div><div class="val" id="max-acc_z">0.000</div></div>
+        <div class="max-card c3"><div class="lbl">Gyro X max</div><div class="val" id="max-gyro_x">0.000</div></div>
+        <div class="max-card c4"><div class="lbl">Gyro Y max</div><div class="val" id="max-gyro_y">0.000</div></div>
+        <div class="max-card c5"><div class="lbl">Gyro Z max</div><div class="val" id="max-gyro_z">0.000</div></div>
+    </div>
+    <div style="text-align:center;margin-bottom:0.5rem;">
+        <small style="cursor:pointer;text-decoration:underline;color:var(--pico-muted-color);" onclick="resetMax()">↺ Reset max values</small>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-wrap">
+        <canvas id="live-chart"></canvas>
+    </div>
+    <div class="stream-meta">
+        <span id="sample-count">0</span> samples in window
+    </div>
 </div>
-<p id="sensor-placeholder" style="text-align:center;color:var(--pico-muted-color);margin-bottom:1rem;">
-    <em>Sensor chart will appear after a brew</em>
-</p>
+
+<!-- Sensor Configuration -->
+<div class="card">
+    <h3>&#9881; Sensor Configuration</h3>
+    <form id="sensor-config-form" onsubmit="saveSensorConfig(event)">
+        <div class="grid">
+            <label for="SENSOR_DEVICE_ID">Device ID
+                <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}" placeholder="e.g. cf79">
+            </label>
+            <label for="SENSOR_SAMPLE_RATE_HZ">Sample Rate (Hz)
+                <input type="number" id="SENSOR_SAMPLE_RATE_HZ" name="SENSOR_SAMPLE_RATE_HZ" value="{{ config['SENSOR_SAMPLE_RATE_HZ'] }}">
+            </label>
+            <label for="SENSOR_DURATION_S">Duration (s)
+                <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}" min="1">
+            </label>
+        </div>
+        <div class="grid">
+            <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
+                <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.001">
+            </label>
+            <label for="SENSOR_RMS_WINDOW_S">RMS Window (s)
+                <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
+            </label>
+            <label for="SENSOR_CHART_WINDOW_S">Chart Window (s)
+                <input type="number" id="SENSOR_CHART_WINDOW_S" name="SENSOR_CHART_WINDOW_S" value="{{ config['SENSOR_CHART_WINDOW_S'] }}" min="5" max="120" step="5">
+            </label>
+        </div>
+        <div class="grid">
+            <label for="SENSOR_ACC_RANGE_G">Accel Range (g)
+                <select id="SENSOR_ACC_RANGE_G" name="SENSOR_ACC_RANGE_G">
+                    {% for v in [2, 4, 8, 16] %}
+                    <option value="{{ v }}" {% if config['SENSOR_ACC_RANGE_G'] == v %}selected{% endif %}>± {{ v }} g</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label for="SENSOR_GYRO_RANGE_DPS">Gyro Range (dps)
+                <select id="SENSOR_GYRO_RANGE_DPS" name="SENSOR_GYRO_RANGE_DPS">
+                    {% for v in [250, 500, 1000, 2000] %}
+                    <option value="{{ v }}" {% if config['SENSOR_GYRO_RANGE_DPS'] == v %}selected{% endif %}>± {{ v }} dps</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label for="SENSOR_FILTER_HZ">Low-Pass Filter (Hz)
+                <select id="SENSOR_FILTER_HZ" name="SENSOR_FILTER_HZ">
+                    {% for v in [42, 84, 170, 734] %}
+                    <option value="{{ v }}" {% if config['SENSOR_FILTER_HZ'] == v %}selected{% endif %}>{{ v }} Hz</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem;">
+            <button type="submit" style="margin:0;">&#128190; Save &amp; Restart Sensor</button>
+            <span id="config-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>
+        </div>
+    </form>
+</div>
 
 <!-- Settings -->
 <div class="card">
@@ -365,58 +570,15 @@ document.addEventListener('DOMContentLoaded', checkServices);
                         <option value="serial" {% if config['SENSOR_MODE'] == 'serial' %}selected{% endif %}>Serial (raw CSV)</option>
                     </select>
                 </label>
-                <label for="SENSOR_DEVICE_ID">Device ID
-                    <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}" placeholder="e.g. cf79">
-                </label>
-            </div>
-            <div class="grid">
                 <label for="SENSOR_SERIAL_PORT">Serial Port
                     <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}">
                 </label>
-                <label for="SENSOR_SAMPLE_RATE_HZ">Sample Rate (Hz)
-                    <input type="number" id="SENSOR_SAMPLE_RATE_HZ" name="SENSOR_SAMPLE_RATE_HZ" value="{{ config['SENSOR_SAMPLE_RATE_HZ'] }}">
-                </label>
             </div>
             <div class="grid">
-                <label for="SENSOR_DURATION_S">Duration (s)
-                    <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}">
-                </label>
-                <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
-                    <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.001">
-                </label>
-            </div>
-            <div class="grid">
-                <label for="SENSOR_RMS_WINDOW_S">RMS Window (s)
-                    <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
-                    <small>Averaging window for trigger detection (lower = faster, noisier)</small>
-                </label>
                 <label>
                     Auto-Trigger
                     <input type="checkbox" name="SENSOR_AUTO_TRIGGER" role="switch"
                            {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
-                </label>
-            </div>
-            <div class="grid">
-                <label for="SENSOR_ACC_RANGE_G">Accel Range (g)
-                    <select id="SENSOR_ACC_RANGE_G" name="SENSOR_ACC_RANGE_G">
-                        {% for v in [2, 4, 8, 16] %}
-                        <option value="{{ v }}" {% if config['SENSOR_ACC_RANGE_G'] == v %}selected{% endif %}>± {{ v }} g</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label for="SENSOR_GYRO_RANGE_DPS">Gyro Range (dps)
-                    <select id="SENSOR_GYRO_RANGE_DPS" name="SENSOR_GYRO_RANGE_DPS">
-                        {% for v in [250, 500, 1000, 2000] %}
-                        <option value="{{ v }}" {% if config['SENSOR_GYRO_RANGE_DPS'] == v %}selected{% endif %}>± {{ v }} dps</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label for="SENSOR_FILTER_HZ">Low-Pass Filter (Hz)
-                    <select id="SENSOR_FILTER_HZ" name="SENSOR_FILTER_HZ">
-                        {% for v in [42, 84, 170, 734] %}
-                        <option value="{{ v }}" {% if config['SENSOR_FILTER_HZ'] == v %}selected{% endif %}>{{ v }} Hz</option>
-                        {% endfor %}
-                    </select>
                 </label>
             </div>
         </fieldset>

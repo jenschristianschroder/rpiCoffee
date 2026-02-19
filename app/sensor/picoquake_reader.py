@@ -334,6 +334,36 @@ class PicoQuakeReader:
 
     # ── Data conversion ───────────────────────────────────────────
 
+    async def stream_live(self, batch_interval: float = 0.3):
+        """Yield continuous batches of sensor data for live monitoring.
+
+        Unlike ``stream_capture()``, this reads whatever new data has been
+        written to the ring buffer regardless of recording_flag state.
+        Yields ``list[dict]`` approximately every *batch_interval* seconds.
+        Runs indefinitely until cancelled.
+        """
+        if not self._ring:
+            logger.warning("stream_live called but ring buffer not available")
+            return
+
+        last_idx = self._ring.write_idx
+        while True:
+            await asyncio.sleep(batch_interval)
+            if not self._ring:
+                return
+            cur_idx = self._ring.write_idx
+            if cur_idx <= last_idx:
+                continue
+            count = cur_idx - last_idx
+            # Clamp to ring size to avoid reading stale wrap-around data
+            ring_size = self._ring.ring_samples
+            if count > ring_size:
+                last_idx = cur_idx - ring_size
+                count = ring_size
+            arr = self._ring.snapshot_range(last_idx, count)
+            last_idx = cur_idx
+            yield self._array_to_dicts(arr)
+
     def _read_capture(self) -> list[dict[str, float]]:
         """Read the completed recording from the ring buffer."""
         start = self._ring.recording_start_idx

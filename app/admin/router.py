@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
 
@@ -135,6 +135,37 @@ async def update_settings(request: Request, session: str | None = Cookie(default
             logger.exception("Failed to restart sensor after settings change")
 
     return RedirectResponse(url="/admin/?message=Settings+saved", status_code=303)
+
+
+# ── Sensor config (JSON API) ────────────────────────────────────
+
+_SENSOR_CONFIG_KEYS = [
+    "SENSOR_DEVICE_ID", "SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S",
+    "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S",
+    "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
+    "SENSOR_CHART_WINDOW_S",
+]
+
+
+@router.post("/sensor-config")
+async def update_sensor_config(request: Request, session: str | None = Cookie(default=None)):
+    """Save sensor-specific settings via JSON and restart the sensor."""
+    if not _verify_session(session):
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+
+    body = await request.json()
+    updates: dict = {}
+    for key in _SENSOR_CONFIG_KEYS:
+        if key in body:
+            updates[key] = body[key]
+
+    if not updates:
+        return JSONResponse({"error": "No valid keys"}, status_code=400)
+
+    config.update_many(updates)
+    logger.info("Sensor config updated: %s", list(updates.keys()))
+
+    return JSONResponse({"ok": True, "updated": list(updates.keys())})
 
 
 # ── Password change ──────────────────────────────────────────

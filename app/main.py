@@ -337,6 +337,34 @@ async def auto_trigger_stream():
     )
 
 
+@app.get("/api/sensor/stream")
+async def sensor_live_stream():
+    """SSE endpoint streaming continuous live sensor data for the admin dashboard."""
+    mode = config.SENSOR_MODE
+
+    async def generate():
+        if mode == "picoquake":
+            from sensor.picoquake_reader import picoquake_reader
+            if not picoquake_reader.is_running:
+                yield "event: error\ndata: \"Sensor not running\"\n\n"
+                return
+            try:
+                async for batch in picoquake_reader.stream_live(batch_interval=0.3):
+                    step = max(1, len(batch) // 60)
+                    payload = json.dumps(batch[::step])
+                    yield f"data: {payload}\n\n"
+            except asyncio.CancelledError:
+                return
+        else:
+            yield "event: error\ndata: \"Live stream only available in picoquake mode\"\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.get("/api/services/status")
 async def services_status():
     """Check health of all backend services."""
