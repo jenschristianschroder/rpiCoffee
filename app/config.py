@@ -72,6 +72,42 @@ _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_CHART_WINDOW_S"}
 _FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S"}
 
+# Human-readable descriptions displayed as help text in the admin dashboard
+_DESCRIPTIONS: dict[str, str] = {
+    # Sensor
+    "SENSOR_DEVICE_ID": "PicoQuake USB device identifier (last 4 hex chars of serial number)",
+    "SENSOR_SAMPLE_RATE_HZ": "Number of sensor readings per second (higher = more detail, more CPU)",
+    "SENSOR_DURATION_S": "How many seconds of data to capture per brew event",
+    "SENSOR_VIBRATION_THRESHOLD": "Minimum RMS acceleration (g) to detect a brew event for auto-trigger",
+    "SENSOR_RMS_WINDOW_S": "Sliding window length in seconds used to compute the RMS value",
+    "SENSOR_CHART_WINDOW_S": "Width of the live chart's rolling time window in seconds",
+    "SENSOR_ACC_ENABLED": "Enable accelerometer channels (X, Y, Z) on the sensor",
+    "SENSOR_GYRO_ENABLED": "Enable gyroscope channels (X, Y, Z) on the sensor",
+    "SENSOR_NEUTRALIZE_GRAVITY": "Subtract 1 g from the Z-axis to remove the gravity component",
+    "SENSOR_ACC_RANGE_G": "Full-scale accelerometer range; higher values capture stronger vibrations",
+    "SENSOR_GYRO_RANGE_DPS": "Full-scale gyroscope range in degrees per second",
+    "SENSOR_FILTER_HZ": "Hardware low-pass filter cutoff; lower values smooth out high-frequency noise",
+    "SENSOR_MODE": "'mock' replays CSV files, 'picoquake' reads the USB sensor, 'serial' reads raw serial",
+    "SENSOR_SERIAL_PORT": "Serial port path for serial mode (e.g. /dev/ttyUSB0 or COM3)",
+    "SENSOR_AUTO_TRIGGER": "Automatically start a brew when vibration exceeds the threshold",
+    # Classifier
+    "CLASSIFIER_ENABLED": "Enable the ML classifier service for coffee-type detection",
+    "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",
+    # LLM
+    "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
+    "LLM_ENDPOINT": "URL of the LLM service (OpenAI-compatible /v1/completions API)",
+    "LLM_MAX_TOKENS": "Maximum number of tokens the LLM may generate per request",
+    "LLM_TEMPERATURE": "Controls randomness: lower is more deterministic, higher is more creative (0.0–2.0)",
+    "LLM_TOP_P": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0–1.0)",
+    "LLM_TTS": "When enabled, the generated text is automatically sent to the TTS service",
+    # TTS
+    "TTS_ENABLED": "Enable the text-to-speech service to read brew descriptions aloud",
+    "TTS_ENDPOINT": "URL of the TTS service",
+    # Remote Save
+    "REMOTE_SAVE_ENABLED": "Enable uploading brew data to a remote server for storage",
+    "REMOTE_SAVE_ENDPOINT": "URL of the remote-save service",
+}
+
 SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", str(_LOCAL_DATA_DIR))) / "settings.json"
 
 

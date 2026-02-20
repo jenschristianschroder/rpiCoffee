@@ -569,42 +569,57 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="grid">
             <label for="SENSOR_DEVICE_ID">Device ID
                 <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}" placeholder="e.g. cf79">
+                {% if descriptions.get('SENSOR_DEVICE_ID') %}<small>{{ descriptions['SENSOR_DEVICE_ID'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_SAMPLE_RATE_HZ">Sample Rate (Hz)
                 <input type="number" id="SENSOR_SAMPLE_RATE_HZ" name="SENSOR_SAMPLE_RATE_HZ" value="{{ config['SENSOR_SAMPLE_RATE_HZ'] }}">
+                {% if descriptions.get('SENSOR_SAMPLE_RATE_HZ') %}<small>{{ descriptions['SENSOR_SAMPLE_RATE_HZ'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_DURATION_S">Duration (s)
                 <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}" min="1">
+                {% if descriptions.get('SENSOR_DURATION_S') %}<small>{{ descriptions['SENSOR_DURATION_S'] }}</small>{% endif %}
             </label>
         </div>
         <div class="grid">
             <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
                 <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.0001">
+                {% if descriptions.get('SENSOR_VIBRATION_THRESHOLD') %}<small>{{ descriptions['SENSOR_VIBRATION_THRESHOLD'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_RMS_WINDOW_S">RMS Window (s)
                 <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
+                {% if descriptions.get('SENSOR_RMS_WINDOW_S') %}<small>{{ descriptions['SENSOR_RMS_WINDOW_S'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_CHART_WINDOW_S">Chart Window (s)
                 <input type="number" id="SENSOR_CHART_WINDOW_S" name="SENSOR_CHART_WINDOW_S" value="{{ config['SENSOR_CHART_WINDOW_S'] }}" min="5" max="120" step="5">
+                {% if descriptions.get('SENSOR_CHART_WINDOW_S') %}<small>{{ descriptions['SENSOR_CHART_WINDOW_S'] }}</small>{% endif %}
             </label>
         </div>
         <div class="grid">
+            <div>
             <label style="display:flex;align-items:center;gap:0.5rem;">
                 Accelerometer
                 <input type="checkbox" id="SENSOR_ACC_ENABLED" name="SENSOR_ACC_ENABLED" role="switch"
                        {% if config['SENSOR_ACC_ENABLED'] %}checked{% endif %}>
             </label>
+            {% if descriptions.get('SENSOR_ACC_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['SENSOR_ACC_ENABLED'] }}</small>{% endif %}
+            </div>
+            <div>
             <label style="display:flex;align-items:center;gap:0.5rem;">
                 Gyroscope
                 <input type="checkbox" id="SENSOR_GYRO_ENABLED" name="SENSOR_GYRO_ENABLED" role="switch"
                        {% if config['SENSOR_GYRO_ENABLED'] %}checked{% endif %}>
             </label>
+            {% if descriptions.get('SENSOR_GYRO_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['SENSOR_GYRO_ENABLED'] }}</small>{% endif %}
+            </div>
             {% if config['SENSOR_ACC_ENABLED'] %}
+            <div>
             <label style="display:flex;align-items:center;gap:0.5rem;">
                 Neutralize Gravity (Z−1g)
                 <input type="checkbox" id="SENSOR_NEUTRALIZE_GRAVITY" name="SENSOR_NEUTRALIZE_GRAVITY" role="switch"
                        {% if config['SENSOR_NEUTRALIZE_GRAVITY'] %}checked{% endif %}>
             </label>
+            {% if descriptions.get('SENSOR_NEUTRALIZE_GRAVITY') %}<small style="color:var(--pico-muted-color);">{{ descriptions['SENSOR_NEUTRALIZE_GRAVITY'] }}</small>{% endif %}
+            </div>
             {% endif %}
         </div>
         <div class="grid">
@@ -614,6 +629,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <option value="{{ v }}" {% if config['SENSOR_ACC_RANGE_G'] == v %}selected{% endif %}>± {{ v }} g</option>
                     {% endfor %}
                 </select>
+                {% if descriptions.get('SENSOR_ACC_RANGE_G') %}<small>{{ descriptions['SENSOR_ACC_RANGE_G'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_GYRO_RANGE_DPS">Gyro Range (dps)
                 <select id="SENSOR_GYRO_RANGE_DPS" name="SENSOR_GYRO_RANGE_DPS">
@@ -621,6 +637,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <option value="{{ v }}" {% if config['SENSOR_GYRO_RANGE_DPS'] == v %}selected{% endif %}>± {{ v }} dps</option>
                     {% endfor %}
                 </select>
+                {% if descriptions.get('SENSOR_GYRO_RANGE_DPS') %}<small>{{ descriptions['SENSOR_GYRO_RANGE_DPS'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_FILTER_HZ">Low-Pass Filter (Hz)
                 <select id="SENSOR_FILTER_HZ" name="SENSOR_FILTER_HZ">
@@ -628,6 +645,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <option value="{{ v }}" {% if config['SENSOR_FILTER_HZ'] == v %}selected{% endif %}>{{ v }} Hz</option>
                     {% endfor %}
                 </select>
+                {% if descriptions.get('SENSOR_FILTER_HZ') %}<small>{{ descriptions['SENSOR_FILTER_HZ'] }}</small>{% endif %}
             </label>
         </div>
         <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem;">
@@ -660,13 +678,17 @@ document.addEventListener('DOMContentLoaded', function() {
         <fieldset>
             <legend><strong>Classifier</strong> – Coffee Type</legend>
             <div class="grid">
-                <label>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
                     Enabled
                     <input type="checkbox" name="CLASSIFIER_ENABLED" role="switch"
                            {% if config['CLASSIFIER_ENABLED'] %}checked{% endif %}>
                 </label>
+                {% if descriptions.get('CLASSIFIER_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['CLASSIFIER_ENABLED'] }}</small>{% endif %}
+                </div>
                 <label for="CLASSIFIER_ENDPOINT">Endpoint
                     <input type="text" id="CLASSIFIER_ENDPOINT" name="CLASSIFIER_ENDPOINT" value="{{ config['CLASSIFIER_ENDPOINT'] }}">
+                    {% if descriptions.get('CLASSIFIER_ENDPOINT') %}<small>{{ descriptions['CLASSIFIER_ENDPOINT'] }}</small>{% endif %}
                 </label>
             </div>
         </fieldset>
@@ -674,45 +696,59 @@ document.addEventListener('DOMContentLoaded', function() {
         <fieldset>
             <legend><strong>LLM</strong> – Text Generation</legend>
             <div class="grid">
-                <label>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
                     Enabled
                     <input type="checkbox" name="LLM_ENABLED" role="switch"
                            {% if config['LLM_ENABLED'] %}checked{% endif %}>
                 </label>
+                {% if descriptions.get('LLM_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_ENABLED'] }}</small>{% endif %}
+                </div>
                 <label for="LLM_ENDPOINT">Endpoint
                     <input type="text" id="LLM_ENDPOINT" name="LLM_ENDPOINT" value="{{ config['LLM_ENDPOINT'] }}">
+                    {% if descriptions.get('LLM_ENDPOINT') %}<small>{{ descriptions['LLM_ENDPOINT'] }}</small>{% endif %}
                 </label>
             </div>
             <div class="grid">
                 <label for="LLM_MAX_TOKENS">Max Tokens
                     <input type="number" id="LLM_MAX_TOKENS" name="LLM_MAX_TOKENS" value="{{ config['LLM_MAX_TOKENS'] }}" min="1" max="4096">
+                    {% if descriptions.get('LLM_MAX_TOKENS') %}<small>{{ descriptions['LLM_MAX_TOKENS'] }}</small>{% endif %}
                 </label>
                 <label for="LLM_TEMPERATURE">Temperature
                     <input type="number" id="LLM_TEMPERATURE" name="LLM_TEMPERATURE" value="{{ config['LLM_TEMPERATURE'] }}" min="0" max="2" step="0.05">
+                    {% if descriptions.get('LLM_TEMPERATURE') %}<small>{{ descriptions['LLM_TEMPERATURE'] }}</small>{% endif %}
                 </label>
             </div>
             <div class="grid">
                 <label for="LLM_TOP_P">Top-P
                     <input type="number" id="LLM_TOP_P" name="LLM_TOP_P" value="{{ config['LLM_TOP_P'] }}" min="0" max="1" step="0.05">
+                    {% if descriptions.get('LLM_TOP_P') %}<small>{{ descriptions['LLM_TOP_P'] }}</small>{% endif %}
                 </label>
-                <label>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
                     TTS Mode
                     <input type="checkbox" name="LLM_TTS" role="switch"
                            {% if config['LLM_TTS'] %}checked{% endif %}>
                 </label>
+                {% if descriptions.get('LLM_TTS') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_TTS'] }}</small>{% endif %}
+                </div>
             </div>
         </fieldset>
 
         <fieldset>
             <legend><strong>TTS</strong> – Text-to-Speech</legend>
             <div class="grid">
-                <label>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
                     Enabled
                     <input type="checkbox" name="TTS_ENABLED" role="switch"
                            {% if config['TTS_ENABLED'] %}checked{% endif %}>
                 </label>
+                {% if descriptions.get('TTS_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['TTS_ENABLED'] }}</small>{% endif %}
+                </div>
                 <label for="TTS_ENDPOINT">Endpoint
                     <input type="text" id="TTS_ENDPOINT" name="TTS_ENDPOINT" value="{{ config['TTS_ENDPOINT'] }}">
+                    {% if descriptions.get('TTS_ENDPOINT') %}<small>{{ descriptions['TTS_ENDPOINT'] }}</small>{% endif %}
                 </label>
             </div>
         </fieldset>
@@ -720,13 +756,17 @@ document.addEventListener('DOMContentLoaded', function() {
         <fieldset>
             <legend><strong>Remote Save</strong> – Brew Logging</legend>
             <div class="grid">
-                <label>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
                     Enabled
                     <input type="checkbox" name="REMOTE_SAVE_ENABLED" role="switch"
                            {% if config['REMOTE_SAVE_ENABLED'] %}checked{% endif %}>
                 </label>
+                {% if descriptions.get('REMOTE_SAVE_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['REMOTE_SAVE_ENABLED'] }}</small>{% endif %}
+                </div>
                 <label for="REMOTE_SAVE_ENDPOINT">Endpoint
                     <input type="text" id="REMOTE_SAVE_ENDPOINT" name="REMOTE_SAVE_ENDPOINT" value="{{ config['REMOTE_SAVE_ENDPOINT'] }}">
+                    {% if descriptions.get('REMOTE_SAVE_ENDPOINT') %}<small>{{ descriptions['REMOTE_SAVE_ENDPOINT'] }}</small>{% endif %}
                 </label>
             </div>
         </fieldset>
@@ -740,17 +780,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         <option value="picoquake" {% if config['SENSOR_MODE'] == 'picoquake' %}selected{% endif %}>PicoQuake (USB sensor)</option>
                         <option value="serial" {% if config['SENSOR_MODE'] == 'serial' %}selected{% endif %}>Serial (raw CSV)</option>
                     </select>
+                    {% if descriptions.get('SENSOR_MODE') %}<small>{{ descriptions['SENSOR_MODE'] }}</small>{% endif %}
                 </label>
                 <label for="SENSOR_SERIAL_PORT">Serial Port
                     <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}">
+                    {% if descriptions.get('SENSOR_SERIAL_PORT') %}<small>{{ descriptions['SENSOR_SERIAL_PORT'] }}</small>{% endif %}
                 </label>
             </div>
             <div class="grid">
-                <label>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
                     Auto-Trigger
                     <input type="checkbox" name="SENSOR_AUTO_TRIGGER" role="switch"
                            {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
                 </label>
+                {% if descriptions.get('SENSOR_AUTO_TRIGGER') %}<small style="color:var(--pico-muted-color);">{{ descriptions['SENSOR_AUTO_TRIGGER'] }}</small>{% endif %}
+                </div>
             </div>
         </fieldset>
 

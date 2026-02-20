@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
 
-from config import config
+from config import _DESCRIPTIONS, config
 
 logger = logging.getLogger("rpicoffee.admin")
 
@@ -90,6 +90,7 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
         "config": cfg,
         "editable_keys": _EDITABLE_KEYS,
         "bool_keys": _BOOL_KEYS,
+        "descriptions": _DESCRIPTIONS,
         "message": request.query_params.get("message", ""),
     })
 
