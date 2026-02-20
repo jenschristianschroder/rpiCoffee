@@ -239,10 +239,13 @@ async function checkServices() {
         for (const [svc, info] of Object.entries(data)) {
             const dot = document.getElementById('s-' + svc);
             if (!dot) continue;
-            if (info.enabled === false) { dot.className = 'dot gray'; }
-            else if (info.healthy)      { dot.className = 'dot green'; }
-            else                        { dot.className = 'dot red'; }
-
+            const item = dot.closest('.status-item');
+            if (info.enabled === false) {
+                if (item) item.style.display = 'none';
+            } else {
+                if (item) item.style.display = '';
+                dot.className = info.healthy ? 'dot green' : 'dot red';
+            }
         }
     } catch (e) { /* ignore */ }
 }
