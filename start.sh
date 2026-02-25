@@ -28,7 +28,7 @@ set -a; source .env; set +a
 # ── Build profile flags ─────────────────────────────────────────
 PROFILES=""
 [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && PROFILES="$PROFILES --profile classifier"
-[[ "${LLM_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile llm"
+[[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && PROFILES="$PROFILES --profile llm"
 [[ "${TTS_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile tts"
 [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && PROFILES="$PROFILES --profile remote-save"
 
@@ -52,29 +52,32 @@ echo ""
 if [[ -n "$PROFILES" ]]; then
     info "Starting Docker services..."
     # shellcheck disable=SC2086
-    docker compose $PROFILES up -d
+    docker compose $PROFILES up -d --build
 
     # ── Health-check loop ────────────────────────────────────────
-    declare -A SVC_PORTS
-    [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_PORTS[classifier]=8001
-    [[ "${LLM_ENABLED:-false}"         == "true" ]] && SVC_PORTS[llm]=8000
-    [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_PORTS[tts]=5050
-    [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_PORTS[remote-save]=7000
+    declare -A SVC_HEALTH
+    [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health"
+    [[ "${LLM_ENABLED:-false}" == "true" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8000}/health"
+    [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health"
+    [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health"
 
-    for svc in "${!SVC_PORTS[@]}"; do
-        port="${SVC_PORTS[$svc]}"
-        info "Waiting for $svc (port $port)..."
+    for svc in "${!SVC_HEALTH[@]}"; do
+        url="${SVC_HEALTH[$svc]}"
+        echo -n "  Waiting for $svc "
         TRIES=0
-        MAX_TRIES=30
-        while ! curl -sf "http://localhost:${port}/health" > /dev/null 2>&1; do
+        MAX_TRIES=60
+        while ! curl -sf --max-time 2 "$url" > /dev/null 2>&1; do
             ((TRIES++))
             if (( TRIES >= MAX_TRIES )); then
+                echo ""
                 fail "$svc did not become healthy after ${MAX_TRIES}×2s"
                 break
             fi
+            echo -n "."
             sleep 2
         done
         if (( TRIES < MAX_TRIES )); then
+            echo ""
             ok "$svc healthy"
         fi
     done
