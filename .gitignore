@@ -24,3 +24,6 @@ Desktop.ini
 # IDE
 .vscode/
 .idea/
+
+#plans
+*plan.md
