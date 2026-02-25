@@ -33,7 +33,9 @@ _PERSISTED_SECRETS = {"ADMIN_PASSWORD_HASH"}
 _DEFAULTS: dict[str, Any] = {
     # Services
     "LLM_ENABLED": True,
+    "LLM_BACKEND": "llama-cpp",  # "llama-cpp" or "ollama" (Hailo AI HAT+)
     "LLM_ENDPOINT": "http://llm:8000",
+    "LLM_MODEL": "qwen2:1.5b",  # Ollama model name (only used when LLM_BACKEND=ollama)
     "TTS_ENABLED": True,
     "TTS_ENDPOINT": "http://tts:5000",
     "CLASSIFIER_ENABLED": True,
@@ -59,6 +61,7 @@ _DEFAULTS: dict[str, Any] = {
     "LLM_TEMPERATURE": 0.7,
     "LLM_TOP_P": 0.9,
     "LLM_TTS": True,
+    "LLM_KEEP_ALIVE": -1,  # Ollama keep_alive: -1=forever, 0=unload, or seconds
     # Remote save
     "REMOTE_SAVE_ENABLED": True,
     "REMOTE_SAVE_ENDPOINT": "http://remote-save:7000",
@@ -69,7 +72,7 @@ _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_T
               "LLM_TTS", "REMOTE_SAVE_ENABLED"}
 _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
-             "SENSOR_CHART_WINDOW_S"}
+             "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE"}
 _FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S"}
 
 # Human-readable descriptions displayed as help text in the admin dashboard
@@ -95,11 +98,14 @@ _DESCRIPTIONS: dict[str, str] = {
     "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",
     # LLM
     "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
-    "LLM_ENDPOINT": "URL of the LLM service (OpenAI-compatible /v1/completions API)",
+    "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+ / hailo-ollama",
+    "LLM_ENDPOINT": "URL of the LLM service",
+    "LLM_MODEL": "Ollama model name (only used when LLM_BACKEND=ollama)",
     "LLM_MAX_TOKENS": "Maximum number of tokens the LLM may generate per request",
-    "LLM_TEMPERATURE": "Controls randomness: lower is more deterministic, higher is more creative (0.0–2.0)",
-    "LLM_TOP_P": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0–1.0)",
+    "LLM_TEMPERATURE": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)",
+    "LLM_TOP_P": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)",
     "LLM_TTS": "When enabled, the generated text is automatically sent to the TTS service",
+    "LLM_KEEP_ALIVE": "Ollama keep_alive: -1 = keep model loaded forever, 0 = unload immediately, or seconds",
     # TTS
     "TTS_ENABLED": "Enable the text-to-speech service to read brew descriptions aloud",
     "TTS_ENDPOINT": "URL of the TTS service",

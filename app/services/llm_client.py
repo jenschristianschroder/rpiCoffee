@@ -1,4 +1,11 @@
-"""HTTP client for the LLM text generation service."""
+"""HTTP client for the LLM text generation service.
+
+Supports two backends:
+  - ``llama-cpp`` (default): custom GGUF server at ``POST /generate``
+  - ``ollama``: Hailo AI HAT+ 2 / hailo-ollama at ``POST /api/generate``
+
+The active backend is selected via ``config.LLM_BACKEND``.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +16,7 @@ from typing import Any
 import httpx
 
 from config import config
+from services.ollama_adapter import ollama_generate, ollama_health
 
 logger = logging.getLogger("rpicoffee.llm_client")
 _TIMEOUT = 30.0
@@ -19,6 +27,10 @@ class LLMClient:
 
     @staticmethod
     async def health() -> dict[str, Any]:
+        if config.LLM_BACKEND == "ollama":
+            return await ollama_health(config.LLM_ENDPOINT)
+
+        # Default: llama-cpp custom server
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 r = await client.get(f"{config.LLM_ENDPOINT}/health")
@@ -66,6 +78,21 @@ class LLMClient:
 
         prompt = f"Write a statement about {coffee_label.title()} at {timestamp.isoformat()}"
 
+        # ── Ollama / Hailo backend ──────────────────────────────
+        if config.LLM_BACKEND == "ollama":
+            return await ollama_generate(
+                endpoint=config.LLM_ENDPOINT,
+                model=config.LLM_MODEL,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                tts=tts,
+                keep_alive=config.LLM_KEEP_ALIVE,
+                timeout=_TIMEOUT,
+            )
+
+        # ── Default: llama-cpp custom server ────────────────────
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 r = await client.post(
