@@ -460,7 +460,7 @@ WorkingDirectory=${SCRIPT_DIR}
 ExecStart=/usr/bin/docker compose ${PROFILES} up -d
 ExecStop=/usr/bin/docker compose ${PROFILES} down
 User=${USER}
-TimeoutStartSec=120
+TimeoutStartSec=0
 
 [Install]
 WantedBy=multi-user.target
