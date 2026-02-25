@@ -13,8 +13,16 @@ __pycache__/
 /data/settings.json
 /data/brews/
 
-# Sample/training CSV files
+# Sample/training CSV files (seed .csv.sample files are tracked)
 *.csv
+
+# Large model artifacts – downloaded during setup
+services/llm/coffee-gguf/*.gguf
+services/llm/coffee-merged/
+services/llm/coffee-lora/
+services/llm/llama.cpp/
+services/tts/models/
+services/tts/output/
 
 # OS files
 Thumbs.db

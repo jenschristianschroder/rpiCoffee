@@ -1,31 +1,5 @@
 
 services:
-  # ── Main application (always starts) ───────────────────────────
-  app:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    container_name: rpicoffee-app
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-    environment:
-      - SETTINGS_DIR=/data
-      - DATA_DIR=/data
-    volumes:
-      - coffee-data:/data
-      - ./data:/data/csv-defaults:ro
-    # Uncomment 'devices' on Linux/Raspberry Pi for USB sensor passthrough.
-    # On Windows with Docker Desktop, USB passthrough is not supported;
-    # run the app on the host instead (see run-app-local.bat).
-    # devices:
-    #   - /dev/ttyACM0:/dev/ttyACM0
-    networks:
-      - coffee-net
-    restart: unless-stopped
-    depends_on: []
-
   # ── classifier – coffee drink classifier ───────────────────────
   classifier:
     build:
@@ -92,7 +66,3 @@ services:
 networks:
   coffee-net:
     driver: bridge
-
-volumes:
-  coffee-data:
-    driver: local
