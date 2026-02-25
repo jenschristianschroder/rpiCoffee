@@ -54,10 +54,10 @@ if [[ -n "$PROFILES" ]]; then
     # shellcheck disable=SC2086
     docker compose $PROFILES up -d --build
 
-    # ── Health-check loop ────────────────────────────────────────
+    # ── Health-check loop (Docker-managed services only) ────────
     declare -A SVC_HEALTH
     [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health"
-    [[ "${LLM_ENABLED:-false}" == "true" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8000}/health"
+    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8000}/health"
     [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health"
     [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health"
 
@@ -83,6 +83,28 @@ if [[ -n "$PROFILES" ]]; then
     done
 else
     info "No Docker services enabled"
+fi
+
+# ── External service health checks (not Docker-managed) ─────────
+if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+    LLM_URL="${LLM_ENDPOINT:-http://localhost:8000}"
+    echo -n "  Waiting for ollama (${LLM_URL}) "
+    TRIES=0; MAX_TRIES=30
+    while ! curl -sf --max-time 2 "${LLM_URL}/api/tags" > /dev/null 2>&1; do
+        ((TRIES++))
+        if (( TRIES >= MAX_TRIES )); then
+            echo ""
+            fail "ollama did not respond at ${LLM_URL}/api/tags after ${MAX_TRIES}×2s"
+            fail "Make sure hailo-ollama is running on the device"
+            break
+        fi
+        echo -n "."
+        sleep 2
+    done
+    if (( TRIES < MAX_TRIES )); then
+        echo ""
+        ok "ollama healthy (${LLM_URL})"
+    fi
 fi
 
 # ── Start app natively ───────────────────────────────────────────
