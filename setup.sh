@@ -224,6 +224,16 @@ if [[ "$CONFIGURE_ENV" == "true" ]]; then
     prompt_yn "Enable LLM service?" LLM_ENABLED "y"
     env_set .env LLM_ENABLED "$LLM_ENABLED"
 
+    if [[ "$LLM_ENABLED" == "true" ]]; then
+        prompt "LLM backend (llama-cpp / ollama)" LLM_BACKEND "llama-cpp"
+        env_set .env LLM_BACKEND "$LLM_BACKEND"
+        if [[ "$LLM_BACKEND" == "ollama" ]]; then
+            prompt "Ollama model name" LLM_MODEL "qwen2:1.5b"
+            env_set .env LLM_MODEL "$LLM_MODEL"
+            info "Using hailo-ollama — the LLM Docker container will NOT be built"
+        fi
+    fi
+
     prompt_yn "Enable TTS service?" TTS_ENABLED "y"
     env_set .env TTS_ENABLED "$TTS_ENABLED"
 
@@ -316,7 +326,7 @@ header "Phase 4 · Model downloads"
 
 # LLM model
 GGUF_PATH="services/llm/coffee-gguf/coffee-Q4_K_M.gguf"
-if [[ "${LLM_ENABLED:-false}" == "true" ]]; then
+if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]]; then
     mkdir -p "$(dirname "$GGUF_PATH")"
     if [[ -f "$GGUF_PATH" ]]; then
         ok "LLM model already present ($(du -h "$GGUF_PATH" | cut -f1))"
@@ -338,6 +348,8 @@ if [[ "${LLM_ENABLED:-false}" == "true" ]]; then
             fail "LLM model download failed"
         fi
     fi
+elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+    info "LLM using hailo-ollama — GGUF model not needed"
 else
     info "LLM disabled — skipping model download"
 fi
@@ -395,9 +407,11 @@ else
     info "tts disabled — skipping build"
 fi
 
-if [[ "${LLM_ENABLED:-false}" == "true" ]]; then
+if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]]; then
     info "Building LLM service (this may take 15–30 min on ARM64)..."
     build_service "llm" "llm"
+elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+    info "LLM using hailo-ollama — skipping Docker build"
 else
     info "llm disabled — skipping build"
 fi
@@ -440,7 +454,7 @@ if [[ "$ENABLE_SYSTEMD" == "true" ]]; then
     # Build the profile flags string for docker compose
     PROFILES=""
     [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && PROFILES="$PROFILES --profile classifier"
-    [[ "${LLM_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile llm"
+    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && PROFILES="$PROFILES --profile llm"
     [[ "${TTS_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile tts"
     [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && PROFILES="$PROFILES --profile remote-save"
     PROFILES="${PROFILES# }"  # trim leading space
