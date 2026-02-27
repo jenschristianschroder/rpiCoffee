@@ -1,0 +1,20 @@
+# ── Line-ending rules ────────────────────────────────────────────
+# Force LF for shell scripts — prevents CRLF breakage on Linux/RPi
+*.sh text eol=lf
+
+# Dockerfiles and entrypoint helpers
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+
+# Other text files that must stay LF for Linux tooling
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.py text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.jinja text eol=lf
+*.bat text eol=crlf
