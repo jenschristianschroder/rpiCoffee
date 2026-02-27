@@ -424,15 +424,26 @@ header "Phase 6 · USB device setup"
 if [[ "${SENSOR_MODE:-mock}" == "picoquake" ]]; then
     UDEV_RULE='/etc/udev/rules.d/99-picoquake.rules'
     RULE_CONTENT='SUBSYSTEM=="tty", ATTRS{idProduct}=="000a", ATTRS{idVendor}=="2e8a", MODE="0666", SYMLINK+="picoquake"'
+    # Disable USB autosuspend for the PicoQuake to prevent connection drops
+    AUTOSUSPEND_RULE='/etc/udev/rules.d/99-picoquake-power.rules'
+    AUTOSUSPEND_CONTENT='ACTION=="add", SUBSYSTEM=="usb", ATTRS{idProduct}=="000a", ATTRS{idVendor}=="2e8a", TEST=="power/control", ATTR{power/control}="on"'
 
     if [[ -f "$UDEV_RULE" ]]; then
         ok "udev rule already installed"
     else
         echo "$RULE_CONTENT" | sudo tee "$UDEV_RULE" > /dev/null
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
         ok "udev rule installed at $UDEV_RULE"
     fi
+
+    if [[ -f "$AUTOSUSPEND_RULE" ]]; then
+        ok "USB autosuspend rule already installed"
+    else
+        echo "$AUTOSUSPEND_CONTENT" | sudo tee "$AUTOSUSPEND_RULE" > /dev/null
+        ok "USB autosuspend disabled for PicoQuake"
+    fi
+
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
 
     if ls /dev/ttyACM* 1>/dev/null 2>&1; then
         ok "PicoQuake USB device detected"
