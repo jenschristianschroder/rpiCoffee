@@ -21,12 +21,40 @@ CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 JSON_MODE=false
 [[ "${1:-}" == "--json" ]] && JSON_MODE=true
 
-# ── Load .env ────────────────────────────────────────────────────
+# ── Load configuration (mirrors app/config.py layering) ──────────
+# Layer 1: .env file (base)
 if [[ -f .env ]]; then
     set -a; source .env; set +a
 else
     echo -e "${RED}No .env found — run ./setup.sh first.${NC}"
     exit 1
+fi
+
+# Layer 2: data/settings.json overrides (admin panel persisted settings)
+# These take priority over .env, matching the app's ConfigManager behaviour.
+SETTINGS_FILE="${SCRIPT_DIR}/data/settings.json"
+if [[ -f "$SETTINGS_FILE" ]] && command -v python3 &>/dev/null; then
+    eval "$(python3 -c "
+import json, sys, shlex
+with open(sys.argv[1]) as f:
+    settings = json.load(f)
+# Only export config keys the status script cares about
+keys = [
+    'CLASSIFIER_ENABLED', 'CLASSIFIER_ENDPOINT',
+    'LLM_ENABLED', 'LLM_BACKEND', 'LLM_ENDPOINT', 'LLM_MODEL',
+    'TTS_ENABLED', 'TTS_ENDPOINT',
+    'REMOTE_SAVE_ENABLED', 'REMOTE_SAVE_ENDPOINT',
+    'SENSOR_MODE', 'SENSOR_DEVICE_ID', 'SENSOR_SERIAL_PORT',
+    'SENSOR_AUTO_TRIGGER',
+]
+for k in keys:
+    if k in settings:
+        v = settings[k]
+        # Normalise booleans to true/false strings for bash
+        if isinstance(v, bool):
+            v = 'true' if v else 'false'
+        print(f'export {k}={shlex.quote(str(v))}')
+" "$SETTINGS_FILE" 2>/dev/null)" || true
 fi
 
 # ── Helpers ──────────────────────────────────────────────────────
