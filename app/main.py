@@ -43,18 +43,64 @@ _sensor_started = False
 _shutdown_event: asyncio.Event | None = None
 
 
+# Sensor watchdog constants
+_SENSOR_MAX_RESTARTS = 5
+_SENSOR_RESTART_WINDOW = 300  # seconds
+
+
 async def _auto_trigger_loop():
     """Poll the PicoQuake recording_flag and run the pipeline on vibration."""
     from sensor.picoquake_reader import picoquake_reader
 
     logger.info("Auto-trigger loop started (polling every 500 ms)")
     _prev_flag = 0
+    _restart_times: list[float] = []  # track restart timestamps for rate-limiting
     while True:
         try:
             await asyncio.sleep(0.5)
 
             if not config.SENSOR_AUTO_TRIGGER:
                 continue
+
+            # ── Watchdog: auto-restart dead sensor ────────────────
+            if not picoquake_reader.is_running and config.SENSOR_MODE == "picoquake":
+                import time as _time
+                now = _time.monotonic()
+                # Prune restart timestamps outside the rate-limit window
+                _restart_times = [t for t in _restart_times
+                                  if now - t < _SENSOR_RESTART_WINDOW]
+                if len(_restart_times) >= _SENSOR_MAX_RESTARTS:
+                    # Already restarted too many times recently — back off
+                    logger.error(
+                        "Sensor has been restarted %d times in the last %ds "
+                        "— not attempting again. Manual intervention required.",
+                        len(_restart_times), _SENSOR_RESTART_WINDOW,
+                    )
+                    _broadcast({"type": "status",
+                                "message": "Sensor offline — max restarts exceeded. "
+                                           "Check hardware and restart manually."})
+                    await asyncio.sleep(30)  # long sleep before re-checking
+                    continue
+
+                logger.warning("Sensor acquisition not running — attempting restart…")
+                _broadcast({"type": "status",
+                            "message": "Sensor connection lost — reconnecting…"})
+                try:
+                    picoquake_reader.stop()  # clean up stale state / shared memory
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, _start_sensor)
+                    _restart_times.append(now)
+                    logger.info("Sensor restarted successfully (attempt %d/%d in window)",
+                                len(_restart_times), _SENSOR_MAX_RESTARTS)
+                    _broadcast({"type": "status",
+                                "message": "Sensor reconnected successfully."})
+                except Exception:
+                    logger.exception("Sensor restart failed — will retry in 10s")
+                    _broadcast({"type": "status",
+                                "message": "Sensor restart failed — retrying…"})
+                await asyncio.sleep(10)
+                continue
+
             if not picoquake_reader.is_running:
                 continue
             if picoquake_reader._ring is None:

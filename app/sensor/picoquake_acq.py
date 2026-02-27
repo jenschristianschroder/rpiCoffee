@@ -276,15 +276,7 @@ def main_acquisition():
     ring = SharedRingBuffer(ring_samples, create=True)
     ring.status = 0
 
-    logger.info("Connecting to PicoQuake device '%s'…", args.device)
-    try:
-        import picoquake
-        device = picoquake.PicoQuake(args.device)
-    except Exception as exc:
-        logger.error("Could not connect to device: %s", exc)
-        ring.status = 2
-        ring.cleanup()
-        sys.exit(1)
+    import picoquake
 
     _ACC_RANGE_MAP = {
         2: picoquake.AccRange.g_2,
@@ -305,107 +297,169 @@ def main_acquisition():
         734: picoquake.Filter.hz_734,
     }
 
-    device.configure(
-        sample_rate=_rate_enum(args.rate),
-        filter_hz=_FILTER_MAP[args.filter_hz],
-        acc_range=_ACC_RANGE_MAP[args.acc_range],
-        gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
-    )
+    # ── Retry / reconnection constants ───────────────────────────
+    MAX_RETRIES = 5
+    INITIAL_RETRY_DELAY = 3.0
+    MAX_RETRY_DELAY = 30.0
 
-    logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | threshold=%.1fg | duration=%ds",
-                args.rate, args.acc_range, args.gyro_range, args.filter_hz, args.threshold, args.duration)
-    logger.info("Starting continuous acquisition…")
+    def _connect_and_configure():
+        """Connect to the PicoQuake sensor and configure it. Returns device."""
+        logger.info("Connecting to PicoQuake device '%s'…", args.device)
+        dev = picoquake.PicoQuake(args.device)
+        dev.configure(
+            sample_rate=_rate_enum(args.rate),
+            filter_hz=_FILTER_MAP[args.filter_hz],
+            acc_range=_ACC_RANGE_MAP[args.acc_range],
+            gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
+        )
+        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | threshold=%.1fg | duration=%ds",
+                    args.rate, args.acc_range, args.gyro_range, args.filter_hz, args.threshold, args.duration)
+        return dev
 
-    device.start_continuos()
-    ring.status = 1
-
-    t0 = time.monotonic()
-    last_log = t0
-    batch: list[list[float]] = []
-    samples_since_log = 0
-
-    # Auto-trigger state
-    rms_window_size = max(1, int(args.rate * args.rms_window))  # configurable RMS window
-    recent_accel: list[float] = []
-    recording_count = 0  # samples captured since recording started
-
+    # ── Initial connection ────────────────────────────────────────
     try:
-        while True:
-            frames = device.read(num=batch_size, timeout=1.0)
-            if not frames:
-                continue
+        device = _connect_and_configure()
+    except Exception as exc:
+        logger.error("Could not connect to device: %s", exc)
+        ring.status = 2
+        ring.cleanup()
+        sys.exit(1)
 
-            now = time.monotonic()
+    # ── Acquisition with retry on connection loss ────────────────
+    retry_delay = INITIAL_RETRY_DELAY
+    attempt = 0
 
-            for frame in frames:
-                sample_idx = ring.sample_counter + len(batch)
-                t = sample_idx * sample_interval
-                row = [t, frame.acc_x, frame.acc_y, frame.acc_z,
-                       frame.gyro_x, frame.gyro_y, frame.gyro_z]
-                batch.append(row)
+    while True:
+        logger.info("Starting continuous acquisition…")
+        device.start_continuos()
+        ring.status = 1
 
-                # Track accel magnitude for auto-trigger
-                mag = (frame.acc_x**2 + frame.acc_y**2 + frame.acc_z**2) ** 0.5
-                recent_accel.append(mag)
-                if len(recent_accel) > rms_window_size:
-                    recent_accel.pop(0)
+        t0 = time.monotonic()
+        last_log = t0
+        batch: list[list[float]] = []
+        samples_since_log = 0
 
-            samples_since_log += len(frames)
+        # Auto-trigger state
+        rms_window_size = max(1, int(args.rate * args.rms_window))  # configurable RMS window
+        recent_accel: list[float] = []
+        recording_count = 0  # samples captured since recording started
 
-            # Flush batch to ring
-            if len(batch) >= 50 or (now - t0) - (ring.sample_counter * sample_interval) > 0.1:
+        try:
+            while True:
+                frames = device.read(num=batch_size, timeout=1.0)
+                if not frames:
+                    continue
+
+                now = time.monotonic()
+                # Reset retry state on successful reads
+                attempt = 0
+                retry_delay = INITIAL_RETRY_DELAY
+
+                for frame in frames:
+                    sample_idx = ring.sample_counter + len(batch)
+                    t = sample_idx * sample_interval
+                    row = [t, frame.acc_x, frame.acc_y, frame.acc_z,
+                           frame.gyro_x, frame.gyro_y, frame.gyro_z]
+                    batch.append(row)
+
+                    # Track accel magnitude for auto-trigger
+                    mag = (frame.acc_x**2 + frame.acc_y**2 + frame.acc_z**2) ** 0.5
+                    recent_accel.append(mag)
+                    if len(recent_accel) > rms_window_size:
+                        recent_accel.pop(0)
+
+                samples_since_log += len(frames)
+
+                # Flush batch to ring
+                if len(batch) >= 50 or (now - t0) - (ring.sample_counter * sample_interval) > 0.1:
+                    ring.write_samples(batch)
+                    batch.clear()
+
+                # ── Auto-trigger logic ───────────────────────────────
+                flag = ring.recording_flag
+
+                if flag == 0 and len(recent_accel) >= rms_window_size:
+                    # Check RMS threshold
+                    rms = (sum(a * a for a in recent_accel) / len(recent_accel)) ** 0.5
+                    if rms > args.threshold:
+                        logger.info("Vibration detected! RMS=%.2fg > threshold=%.1fg → recording %ds",
+                                    rms, args.threshold, args.duration)
+                        ring.recording_start_idx = ring.write_idx
+                        ring.recording_samples = record_samples
+                        ring.recording_flag = 1
+                        recording_count = 0
+
+                elif flag == 1:
+                    # Manual trigger (set by app) also enters here
+                    if ring.recording_start_idx == 0:
+                        # App just set flag=1 but didn't set start idx yet
+                        ring.recording_start_idx = ring.write_idx
+                        ring.recording_samples = record_samples
+
+                    recording_count = ring.write_idx - ring.recording_start_idx
+                    if recording_count >= ring.recording_samples:
+                        logger.info("Recording complete (%d samples captured)", recording_count)
+                        ring.recording_flag = 2
+
+                # flag == 2: capture ready, waiting for app to reset to 0
+
+                # ── Periodic logging ─────────────────────────────────
+                if now - last_log >= 5.0:
+                    actual_rate = samples_since_log / (now - last_log)
+                    rms = (sum(a * a for a in recent_accel) / max(1, len(recent_accel))) ** 0.5
+                    logger.info("samples=%d  rate=%.1f Hz  drops=%d  rms=%.2fg  recording=%d",
+                                ring.sample_counter, actual_rate, ring.drop_counter, rms, flag)
+                    last_log = now
+                    samples_since_log = 0
+
+        except KeyboardInterrupt:
+            logger.info("Stopping acquisition (Ctrl+C)")
+            break  # exit retry loop — clean shutdown
+
+        except Exception as exc:
+            # Flush any pending samples
+            if batch:
                 ring.write_samples(batch)
                 batch.clear()
 
-            # ── Auto-trigger logic ───────────────────────────────
-            flag = ring.recording_flag
+            attempt += 1
+            logger.error("Acquisition error (attempt %d/%d): %s", attempt, MAX_RETRIES, exc)
 
-            if flag == 0 and len(recent_accel) >= rms_window_size:
-                # Check RMS threshold
-                rms = (sum(a * a for a in recent_accel) / len(recent_accel)) ** 0.5
-                if rms > args.threshold:
-                    logger.info("Vibration detected! RMS=%.2fg > threshold=%.1fg → recording %ds",
-                                rms, args.threshold, args.duration)
-                    ring.recording_start_idx = ring.write_idx
-                    ring.recording_samples = record_samples
-                    ring.recording_flag = 1
-                    recording_count = 0
+            # Try to stop the device gracefully
+            try:
+                device.stop()
+            except Exception:
+                pass
 
-            elif flag == 1:
-                # Manual trigger (set by app) also enters here
-                if ring.recording_start_idx == 0:
-                    # App just set flag=1 but didn't set start idx yet
-                    ring.recording_start_idx = ring.write_idx
-                    ring.recording_samples = record_samples
+            if attempt >= MAX_RETRIES:
+                logger.error("Max retries (%d) exhausted — giving up", MAX_RETRIES)
+                ring.status = 2
+                break
 
-                recording_count = ring.write_idx - ring.recording_start_idx
-                if recording_count >= ring.recording_samples:
-                    logger.info("Recording complete (%d samples captured)", recording_count)
-                    ring.recording_flag = 2
+            # Exponential backoff before reconnecting
+            logger.info("Retrying in %.0fs…", retry_delay)
+            ring.status = 0  # signal "stopped" while we reconnect
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY)
 
-            # flag == 2: capture ready, waiting for app to reset to 0
+            # Reconnect
+            try:
+                device = _connect_and_configure()
+            except Exception as reconn_exc:
+                logger.error("Reconnection failed: %s", reconn_exc)
+                if attempt >= MAX_RETRIES:
+                    ring.status = 2
+                    break
+                continue  # back to top of retry loop
 
-            # ── Periodic logging ─────────────────────────────────
-            if now - last_log >= 5.0:
-                actual_rate = samples_since_log / (now - last_log)
-                rms = (sum(a * a for a in recent_accel) / max(1, len(recent_accel))) ** 0.5
-                logger.info("samples=%d  rate=%.1f Hz  drops=%d  rms=%.2fg  recording=%d",
-                            ring.sample_counter, actual_rate, ring.drop_counter, rms, flag)
-                last_log = now
-                samples_since_log = 0
-
-    except KeyboardInterrupt:
-        logger.info("Stopping acquisition (Ctrl+C)")
-    except Exception as exc:
-        logger.error("Acquisition error: %s", exc)
-        ring.status = 2
-    finally:
-        if batch:
-            ring.write_samples(batch)
+    # ── Final cleanup ────────────────────────────────────────────
+    try:
         device.stop()
-        ring.status = 0
-        logger.info("Total samples acquired: %d", ring.sample_counter)
-        ring.close()
+    except Exception:
+        pass
+    ring.status = 0
+    logger.info("Total samples acquired: %d", ring.sample_counter)
+    ring.cleanup()
 
 
 if __name__ == "__main__":
