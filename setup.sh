@@ -20,6 +20,9 @@ TTS_VOICE="en_US-lessac-medium"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ── Ensure shell scripts are executable (safety net for ZIP/tarball installs) ─
+chmod +x "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/app/entrypoint.sh 2>/dev/null || true
+
 LOG_FILE="$SCRIPT_DIR/setup.log"
 ERRORS=()
 WARNINGS=()
