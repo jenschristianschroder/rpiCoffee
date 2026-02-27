@@ -108,6 +108,14 @@ async def _auto_trigger_loop():
 
             flag = picoquake_reader._ring.recording_flag
 
+            # Guard: reset stale recording_flag=2 that was never consumed
+            # (e.g. after exception recovery, startup race, or manual brew)
+            if flag == 2:
+                logger.warning("Auto-trigger: found stale recording_flag=2 — resetting to 0")
+                picoquake_reader._ring.recording_flag = 0
+                _prev_flag = 0
+                continue
+
             # Detect recording start (flag transitions 0→1) and stream data live
             if flag == 1 and _prev_flag == 0:
                 logger.info("Auto-trigger: recording started (capturing %ds)…",
@@ -115,42 +123,47 @@ async def _auto_trigger_loop():
                 _broadcast({"type": "status",
                             "message": "Vibration detected! Recording sensor data…"})
 
-                # Stream sensor data to the kiosk chart in real time.
-                # stream_capture() yields batches until flag==2, then resets flag→0.
-                all_sensor_data: list[dict[str, float]] = []
-                t0: float | None = None
-                async for batch in picoquake_reader.stream_capture(batch_interval=0.3, auto_reset=False):
-                    if not batch:
-                        continue
-                    # Normalise elapsed_s so chart starts at t=0
-                    if t0 is None:
-                        t0 = batch[0].get("elapsed_s", 0.0)
-                    for sample in batch:
-                        sample["elapsed_s"] = sample.get("elapsed_s", 0.0) - t0
-                    all_sensor_data.extend(batch)
-                    # Downsample large batches for the SSE payload
-                    step = max(1, len(batch) // 30)
-                    _broadcast({"type": "sensor_data", "data": batch[::step]})
+                try:
+                    # Stream sensor data to the kiosk chart in real time.
+                    # stream_capture() yields batches until flag==2, then resets flag→0.
+                    all_sensor_data: list[dict[str, float]] = []
+                    t0: float | None = None
+                    async for batch in picoquake_reader.stream_capture(batch_interval=0.3, auto_reset=False):
+                        if not batch:
+                            continue
+                        # Normalise elapsed_s so chart starts at t=0
+                        if t0 is None:
+                            t0 = batch[0].get("elapsed_s", 0.0)
+                        for sample in batch:
+                            sample["elapsed_s"] = sample.get("elapsed_s", 0.0) - t0
+                        all_sensor_data.extend(batch)
+                        # Downsample large batches for the SSE payload
+                        step = max(1, len(batch) // 30)
+                        _broadcast({"type": "sensor_data", "data": batch[::step]})
 
-                # Recording complete — run classifier → llm → tts pipeline
-                # with pre-collected sensor data (no re-read required).
-                logger.info("Auto-trigger: streaming done (%d samples), running pipeline…",
-                            len(all_sensor_data))
-                _broadcast({"type": "status", "message": "Recording complete. Running pipeline…"})
+                    # Recording complete — run classifier → llm → tts pipeline
+                    # with pre-collected sensor data (no re-read required).
+                    logger.info("Auto-trigger: streaming done (%d samples), running pipeline…",
+                                len(all_sensor_data))
+                    _broadcast({"type": "status", "message": "Recording complete. Running pipeline…"})
 
-                def _progress(msg: str) -> None:
-                    _broadcast({"type": "status", "message": msg})
+                    def _progress(msg: str) -> None:
+                        _broadcast({"type": "status", "message": msg})
 
-                result = await run_pipeline(sensor_data=all_sensor_data, on_progress=_progress)
-                result.pop("sensor_data", None)  # already streamed to chart
+                    result = await run_pipeline(sensor_data=all_sensor_data, on_progress=_progress)
+                    result.pop("sensor_data", None)  # already streamed to chart
 
-                # Re-arm the sensor now that the pipeline is done
-                if picoquake_reader._ring is not None:
-                    picoquake_reader._ring.recording_flag = 0
-                    logger.info("Auto-trigger: sensor re-armed")
+                    _broadcast({"type": "result", "data": result})
+                    logger.info("Auto-trigger pipeline complete: %s", result.get("label"))
 
-                _broadcast({"type": "result", "data": result})
-                logger.info("Auto-trigger pipeline complete: %s", result.get("label"))
+                finally:
+                    # ALWAYS re-arm the sensor, even if the pipeline fails.
+                    # Without this, recording_flag stays at 2 and the
+                    # acquisition subprocess never auto-triggers again.
+                    if picoquake_reader._ring is not None:
+                        picoquake_reader._ring.recording_flag = 0
+                        logger.info("Auto-trigger: sensor re-armed")
+
                 _prev_flag = 0
                 continue
 
