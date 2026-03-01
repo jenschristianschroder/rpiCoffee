@@ -19,7 +19,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Keys that can be edited from the admin UI
 _EDITABLE_KEYS = [
-    "LLM_ENABLED", "LLM_BACKEND", "LLM_ENDPOINT", "LLM_MODEL",
+    "LLM_ENABLED", "LLM_BACKEND", "LLM_ENDPOINT", "LLM_OLLAMA_ENDPOINT", "LLM_MODEL",
     "TTS_ENABLED", "TTS_ENDPOINT",
     "CLASSIFIER_ENABLED", "CLASSIFIER_ENDPOINT",
     "REMOTE_SAVE_ENABLED", "REMOTE_SAVE_ENDPOINT",

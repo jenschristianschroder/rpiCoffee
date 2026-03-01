@@ -712,9 +712,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 </label>
                 {% if descriptions.get('LLM_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_ENABLED'] }}</small>{% endif %}
                 </div>
-                <label for="LLM_ENDPOINT">Endpoint
+                <label for="LLM_ENDPOINT">Endpoint (llama-cpp)
                     <input type="text" id="LLM_ENDPOINT" name="LLM_ENDPOINT" value="{{ config['LLM_ENDPOINT'] }}">
                     {% if descriptions.get('LLM_ENDPOINT') %}<small>{{ descriptions['LLM_ENDPOINT'] }}</small>{% endif %}
+                </label>
+                <label for="LLM_OLLAMA_ENDPOINT">Endpoint (ollama)
+                    <input type="text" id="LLM_OLLAMA_ENDPOINT" name="LLM_OLLAMA_ENDPOINT" value="{{ config['LLM_OLLAMA_ENDPOINT'] }}">
+                    {% if descriptions.get('LLM_OLLAMA_ENDPOINT') %}<small>{{ descriptions['LLM_OLLAMA_ENDPOINT'] }}</small>{% endif %}
                 </label>
             </div>
             <div class="grid">
@@ -833,18 +837,25 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <script>
-// Toggle LLM_MODEL and LLM_KEEP_ALIVE fields based on LLM_BACKEND selection
+// Toggle LLM fields based on LLM_BACKEND selection:
+// - Show the correct endpoint field for the active backend
+// - Enable/disable Model and Keep Alive (ollama-only fields)
 (function() {
     var backendSel = document.getElementById('LLM_BACKEND');
     var modelInput = document.getElementById('LLM_MODEL');
     var keepAliveInput = document.getElementById('LLM_KEEP_ALIVE');
-    function toggleOllamaFields() {
+    var llamaEndpoint = document.getElementById('LLM_ENDPOINT').closest('label');
+    var ollamaEndpoint = document.getElementById('LLM_OLLAMA_ENDPOINT').closest('label');
+
+    function toggleBackendFields() {
         var isOllama = backendSel.value === 'ollama';
         modelInput.disabled = !isOllama;
         keepAliveInput.disabled = !isOllama;
+        llamaEndpoint.style.display = isOllama ? 'none' : '';
+        ollamaEndpoint.style.display = isOllama ? '' : 'none';
     }
-    backendSel.addEventListener('change', toggleOllamaFields);
-    toggleOllamaFields();
+    backendSel.addEventListener('change', toggleBackendFields);
+    toggleBackendFields();
 })();
 </script>
 {% endblock %}
