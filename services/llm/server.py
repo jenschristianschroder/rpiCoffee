@@ -206,7 +206,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--model", default=DEFAULT_MODEL)
     p.add_argument("--host", default="0.0.0.0")
-    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--port", type=int, default=8002)
     p.add_argument("--ctx", type=int, default=DEFAULT_CTX)
     p.add_argument("--threads", type=int, default=DEFAULT_THREADS)
     p.add_argument("--batch", type=int, default=DEFAULT_BATCH)

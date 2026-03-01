@@ -5,7 +5,7 @@
 #   docker build -t coffee-llm .
 #
 # Run:
-#   docker run -p 8000:8000 coffee-llm
+#   docker run -p 8002:8002 coffee-llm
 #
 # NOTE: First run Dockerfile.quantize on your dev machine to produce
 #       coffee-gguf/coffee-Q4_K_M.gguf, then copy it to the Pi.
@@ -27,7 +27,7 @@ WORKDIR /app
 COPY server.py .
 COPY coffee-gguf/coffee-Q4_K_M.gguf model/coffee-Q4_K_M.gguf
 
-EXPOSE 8000
+EXPOSE 8002
 
 ENV MODEL_PATH="model/coffee-Q4_K_M.gguf"
 ENV THREADS="4"
