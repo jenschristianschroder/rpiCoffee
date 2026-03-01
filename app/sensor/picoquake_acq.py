@@ -379,8 +379,9 @@ def main_acquisition():
                 flag = ring.recording_flag
 
                 if flag == 0 and len(recent_accel) >= rms_window_size:
-                    # Check RMS threshold
-                    rms = (sum(a * a for a in recent_accel) / len(recent_accel)) ** 0.5
+                    # Check AC-coupled RMS (vibration only, gravity removed)
+                    mean_mag = sum(recent_accel) / len(recent_accel)
+                    rms = (sum((a - mean_mag) ** 2 for a in recent_accel) / len(recent_accel)) ** 0.5
                     if rms > args.threshold:
                         logger.info("Vibration detected! RMS=%.2fg > threshold=%.1fg → recording %ds",
                                     rms, args.threshold, args.duration)
@@ -406,7 +407,9 @@ def main_acquisition():
                 # ── Periodic logging ─────────────────────────────────
                 if now - last_log >= 5.0:
                     actual_rate = samples_since_log / (now - last_log)
-                    rms = (sum(a * a for a in recent_accel) / max(1, len(recent_accel))) ** 0.5
+                    _n = max(1, len(recent_accel))
+                    _mean = sum(recent_accel) / _n
+                    rms = (sum((a - _mean) ** 2 for a in recent_accel) / _n) ** 0.5
                     logger.info("samples=%d  rate=%.1f Hz  drops=%d  rms=%.2fg  recording=%d",
                                 ring.sample_counter, actual_rate, ring.drop_counter, rms, flag)
                     last_log = now

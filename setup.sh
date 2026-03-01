@@ -218,6 +218,8 @@ if [[ "$CONFIGURE_ENV" == "true" ]]; then
     if [[ "$SENSOR_MODE" == "picoquake" ]]; then
         prompt "PicoQuake device ID (last 4 hex of serial)" SENSOR_DEVICE_ID "cf79"
         env_set .env SENSOR_DEVICE_ID "$SENSOR_DEVICE_ID"
+        prompt_yn "Enable auto-trigger on vibration?" SENSOR_AUTO_TRIGGER "y"
+        env_set .env SENSOR_AUTO_TRIGGER "$SENSOR_AUTO_TRIGGER"
     fi
 
     # Service toggles
