@@ -249,12 +249,14 @@ if [[ "$CONFIGURE_ENV" == "true" ]]; then
     env_set .env APP_PORT           "8080"
     env_set .env CLASSIFIER_PORT    "8001"
     env_set .env LLM_PORT           "8002"
+    env_set .env OLLAMA_PORT         "8000"
     env_set .env TTS_PORT           "5050"
     env_set .env REMOTE_SAVE_PORT   "7000"
 
     # Endpoints are always localhost in native mode — set automatically
     env_set .env CLASSIFIER_ENDPOINT "http://localhost:8001"
     env_set .env LLM_ENDPOINT        "http://localhost:8002"
+    env_set .env LLM_OLLAMA_ENDPOINT  "http://localhost:8000"
     env_set .env TTS_ENDPOINT        "http://localhost:5050"
     env_set .env REMOTE_SAVE_ENDPOINT "http://localhost:7000"
 
