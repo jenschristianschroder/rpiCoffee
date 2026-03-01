@@ -35,6 +35,7 @@ _DEFAULTS: dict[str, Any] = {
     "LLM_ENABLED": True,
     "LLM_BACKEND": "llama-cpp",  # "llama-cpp" or "ollama" (Hailo AI HAT+)
     "LLM_ENDPOINT": "http://llm:8000",
+    "LLM_OLLAMA_ENDPOINT": "http://localhost:11434",  # Default endpoint for Ollama / hailo-ollama
     "LLM_MODEL": "qwen2:1.5b",  # Ollama model name (only used when LLM_BACKEND=ollama)
     "TTS_ENABLED": True,
     "TTS_ENDPOINT": "http://tts:5000",
@@ -99,7 +100,8 @@ _DESCRIPTIONS: dict[str, str] = {
     # LLM
     "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
     "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+ / hailo-ollama",
-    "LLM_ENDPOINT": "URL of the LLM service",
+    "LLM_ENDPOINT": "URL of the LLM service (llama-cpp default: port 8000, ollama default: port 11434)",
+    "LLM_OLLAMA_ENDPOINT": "Default Ollama endpoint used when switching backend to ollama (standard port 11434)",
     "LLM_MODEL": "Ollama model name (only used when LLM_BACKEND=ollama)",
     "LLM_MAX_TOKENS": "Maximum number of tokens the LLM may generate per request",
     "LLM_TEMPERATURE": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)",

@@ -26,14 +26,21 @@ class LLMClient:
     """Calls LLM /generate and /health endpoints."""
 
     @staticmethod
+    def _endpoint() -> str:
+        """Return the active endpoint URL for the selected backend."""
+        if config.LLM_BACKEND == "ollama":
+            return config.LLM_OLLAMA_ENDPOINT
+        return config.LLM_ENDPOINT
+
+    @staticmethod
     async def health() -> dict[str, Any]:
         if config.LLM_BACKEND == "ollama":
-            return await ollama_health(config.LLM_ENDPOINT)
+            return await ollama_health(LLMClient._endpoint())
 
         # Default: llama-cpp custom server
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(f"{config.LLM_ENDPOINT}/health")
+                r = await client.get(f"{LLMClient._endpoint()}/health")
                 r.raise_for_status()
                 return {"enabled": True, "healthy": True, **r.json()}
         except Exception as exc:
@@ -81,7 +88,7 @@ class LLMClient:
         # ── Ollama / Hailo backend ──────────────────────────────
         if config.LLM_BACKEND == "ollama":
             return await ollama_generate(
-                endpoint=config.LLM_ENDPOINT,
+                endpoint=LLMClient._endpoint(),
                 model=config.LLM_MODEL,
                 prompt=prompt,
                 max_tokens=max_tokens,
@@ -96,7 +103,7 @@ class LLMClient:
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 r = await client.post(
-                    f"{config.LLM_ENDPOINT}/generate",
+                    f"{LLMClient._endpoint()}/generate",
                     json={
                         "prompt": prompt,
                         "max_tokens": max_tokens,
