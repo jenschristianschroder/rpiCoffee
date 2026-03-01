@@ -237,10 +237,10 @@ function createLiveChart() {
 }
 
 function computeRms() {
-    // Compute RMS of accelerometer magnitude over the RMS window,
+    // Compute AC-coupled RMS of accelerometer magnitude over the RMS window,
     // matching the trigger logic in picoquake_acq.py:
     //   mag = sqrt(acc_x² + acc_y² + acc_z²)
-    //   rms = sqrt(mean(mag²))  over rms_window_size samples
+    //   rms = sqrt(mean((mag - mean_mag)²))  — gravity removed
     if (!liveChart || !_accEnabled) { accelRms = 0; return; }
     var axIdx = KEYS.indexOf('acc_x'), ayIdx = KEYS.indexOf('acc_y'), azIdx = KEYS.indexOf('acc_z');
     if (axIdx < 0 || ayIdx < 0 || azIdx < 0) { accelRms = 0; return; }
@@ -252,16 +252,24 @@ function computeRms() {
     // Use last rms_window_size samples (based on sample rate)
     var windowSamples = Math.max(1, Math.round(RMS_WINDOW_S * SAMPLE_RATE));
     var start = Math.max(0, n - windowSamples);
-    var sum2 = 0, count = 0;
+    // First pass: compute magnitudes and mean
+    var mags = [], magSum = 0;
     for (var j = start; j < n; j++) {
         var rx = dsx[j]._raw !== undefined ? dsx[j]._raw : dsx[j].y;
         var ry = dsy[j]._raw !== undefined ? dsy[j]._raw : dsy[j].y;
         var rz = dsz[j]._raw !== undefined ? dsz[j]._raw : dsz[j].y;
-        var mag2 = rx * rx + ry * ry + rz * rz;
-        sum2 += mag2;
-        count++;
+        var mag = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        mags.push(mag);
+        magSum += mag;
     }
-    accelRms = Math.sqrt(sum2 / count);
+    var meanMag = magSum / mags.length;
+    // Second pass: AC-coupled RMS (deviation from mean)
+    var sum2 = 0;
+    for (var k = 0; k < mags.length; k++) {
+        var diff = mags[k] - meanMag;
+        sum2 += diff * diff;
+    }
+    accelRms = Math.sqrt(sum2 / mags.length);
 }
 
 function updateStatsDisplay() {
@@ -710,6 +718,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 </label>
             </div>
             <div class="grid">
+                <label for="LLM_BACKEND">Backend
+                    <select id="LLM_BACKEND" name="LLM_BACKEND">
+                        <option value="llama-cpp" {% if config['LLM_BACKEND'] == 'llama-cpp' %}selected{% endif %}>llama-cpp</option>
+                        <option value="ollama" {% if config['LLM_BACKEND'] == 'ollama' %}selected{% endif %}>ollama</option>
+                    </select>
+                    {% if descriptions.get('LLM_BACKEND') %}<small>{{ descriptions['LLM_BACKEND'] }}</small>{% endif %}
+                </label>
+                <label for="LLM_MODEL">Model
+                    <input type="text" id="LLM_MODEL" name="LLM_MODEL" value="{{ config['LLM_MODEL'] }}"
+                           {% if config['LLM_BACKEND'] != 'ollama' %}disabled{% endif %}>
+                    {% if descriptions.get('LLM_MODEL') %}<small>{{ descriptions['LLM_MODEL'] }}</small>{% endif %}
+                </label>
+            </div>
+            <div class="grid">
                 <label for="LLM_MAX_TOKENS">Max Tokens
                     <input type="number" id="LLM_MAX_TOKENS" name="LLM_MAX_TOKENS" value="{{ config['LLM_MAX_TOKENS'] }}" min="1" max="4096">
                     {% if descriptions.get('LLM_MAX_TOKENS') %}<small>{{ descriptions['LLM_MAX_TOKENS'] }}</small>{% endif %}
@@ -724,6 +746,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <input type="number" id="LLM_TOP_P" name="LLM_TOP_P" value="{{ config['LLM_TOP_P'] }}" min="0" max="1" step="0.05">
                     {% if descriptions.get('LLM_TOP_P') %}<small>{{ descriptions['LLM_TOP_P'] }}</small>{% endif %}
                 </label>
+                <label for="LLM_KEEP_ALIVE">Keep Alive
+                    <input type="number" id="LLM_KEEP_ALIVE" name="LLM_KEEP_ALIVE" value="{{ config['LLM_KEEP_ALIVE'] }}"
+                           {% if config['LLM_BACKEND'] != 'ollama' %}disabled{% endif %}>
+                    {% if descriptions.get('LLM_KEEP_ALIVE') %}<small>{{ descriptions['LLM_KEEP_ALIVE'] }}</small>{% endif %}
+                </label>
+            </div>
+            <div class="grid">
                 <div>
                 <label style="display:flex;align-items:center;gap:0.5rem;">
                     TTS Mode
@@ -802,4 +831,20 @@ document.addEventListener('DOMContentLoaded', function() {
         <button type="submit">Save Settings</button>
     </form>
 </div>
+
+<script>
+// Toggle LLM_MODEL and LLM_KEEP_ALIVE fields based on LLM_BACKEND selection
+(function() {
+    var backendSel = document.getElementById('LLM_BACKEND');
+    var modelInput = document.getElementById('LLM_MODEL');
+    var keepAliveInput = document.getElementById('LLM_KEEP_ALIVE');
+    function toggleOllamaFields() {
+        var isOllama = backendSel.value === 'ollama';
+        modelInput.disabled = !isOllama;
+        keepAliveInput.disabled = !isOllama;
+    }
+    backendSel.addEventListener('change', toggleOllamaFields);
+    toggleOllamaFields();
+})();
+</script>
 {% endblock %}
