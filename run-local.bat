@@ -21,7 +21,7 @@ echo.
 
 REM Override endpoints for local development
 set CLASSIFIER_PORT=8001
-set LLM_PORT=8000
+set LLM_PORT=8002
 set TTS_PORT=5050
 set REMOTE_SAVE_PORT=7000
 set APP_PORT=8080

@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile
     container_name: rpicoffee-llm
     ports:
-      - "${LLM_PORT:-8000}:${LLM_PORT:-8000}"
+      - "${LLM_PORT:-8002}:${LLM_PORT:-8002}"
     environment:
       - OMP_NUM_THREADS=4
       - THREADS=4

@@ -57,7 +57,7 @@ if [[ -n "$PROFILES" ]]; then
     # ── Health-check loop (Docker-managed services only) ────────
     declare -A SVC_HEALTH
     [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health"
-    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8000}/health"
+    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8002}/health"
     [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health"
     [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health"
 
@@ -87,7 +87,7 @@ fi
 
 # ── External service health checks (not Docker-managed) ─────────
 if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
-    LLM_URL="${LLM_ENDPOINT:-http://localhost:8000}"
+    LLM_URL="${LLM_ENDPOINT:-http://localhost:8002}"
     echo -n "  Waiting for ollama (${LLM_URL}) "
     TRIES=0; MAX_TRIES=30
     while ! curl -sf --max-time 2 "${LLM_URL}/api/tags" > /dev/null 2>&1; do
