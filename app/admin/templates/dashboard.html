@@ -815,8 +815,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     </select>
                     {% if descriptions.get('SENSOR_MODE') %}<small>{{ descriptions['SENSOR_MODE'] }}</small>{% endif %}
                 </label>
+                <label for="SENSOR_DEVICE_ID">Sensor ID
+                    <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}"
+                           placeholder="e.g. cf79"
+                           {% if config['SENSOR_MODE'] != 'picoquake' %}disabled{% endif %}>
+                    {% if descriptions.get('SENSOR_DEVICE_ID') %}<small>{{ descriptions['SENSOR_DEVICE_ID'] }}</small>{% endif %}
+                </label>
                 <label for="SENSOR_SERIAL_PORT">Serial Port
-                    <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}">
+                    <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}"
+                           {% if config['SENSOR_MODE'] != 'serial' %}disabled{% endif %}>
                     {% if descriptions.get('SENSOR_SERIAL_PORT') %}<small>{{ descriptions['SENSOR_SERIAL_PORT'] }}</small>{% endif %}
                 </label>
             </div>
@@ -856,6 +863,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     backendSel.addEventListener('change', toggleBackendFields);
     toggleBackendFields();
+})();
+
+// Toggle Sensor ID / Serial Port based on SENSOR_MODE selection
+(function() {
+    var modeSel = document.getElementById('SENSOR_MODE');
+    var deviceIdInput = document.getElementById('SENSOR_DEVICE_ID');
+    var serialPortInput = document.getElementById('SENSOR_SERIAL_PORT');
+
+    function toggleSensorFields() {
+        var mode = modeSel.value;
+        deviceIdInput.disabled = (mode !== 'picoquake');
+        serialPortInput.disabled = (mode !== 'serial');
+    }
+    modeSel.addEventListener('change', toggleSensorFields);
+    toggleSensorFields();
 })();
 </script>
 {% endblock %}
