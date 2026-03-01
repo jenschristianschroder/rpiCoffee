@@ -517,7 +517,7 @@ Type=simple
 WorkingDirectory=${SCRIPT_DIR}/app
 Environment="PATH=${VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=${SCRIPT_DIR}/.env
-ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port \${APP_PORT:-8080}
+ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port \${APP_PORT}
 Restart=on-failure
 RestartSec=5
 User=${USER}
