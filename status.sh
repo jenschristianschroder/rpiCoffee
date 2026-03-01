@@ -187,13 +187,15 @@ fi
 
 # --- LLM ---
 if [[ "${LLM_ENABLED:-false}" == "true" ]]; then
-    read -r l_host l_port <<< "$(parse_endpoint "${LLM_ENDPOINT:-http://localhost:8002}")"
     if [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
-        # External service — check /api/tags instead of /health
+        # External service — use the dedicated Ollama endpoint
+        _OLLAMA_URL="${LLM_OLLAMA_ENDPOINT:-http://localhost:8000}"
+        read -r l_host l_port <<< "$(parse_endpoint "$_OLLAMA_URL")"
         STATUS[llm]="external (ollama)"
-        HEALTH[llm]="$(http_health "${LLM_ENDPOINT:-http://localhost:8002}/api/tags")"
+        HEALTH[llm]="$(http_health "${_OLLAMA_URL}/api/tags")"
         EXTRA[llm]="backend=ollama model=${LLM_MODEL:-qwen2:1.5b}"
     else
+        read -r l_host l_port <<< "$(parse_endpoint "${LLM_ENDPOINT:-http://localhost:8002}")"
         STATUS[llm]="$(container_status rpicoffee-llm)"
         HEALTH[llm]="$(http_health "${LLM_ENDPOINT:-http://localhost:8002}/health")"
         EXTRA[llm]="backend=llama-cpp"
