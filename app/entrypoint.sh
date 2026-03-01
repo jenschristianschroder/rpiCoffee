@@ -10,4 +10,4 @@ fi
 # Ensure audio directory exists
 mkdir -p /data/audio
 
-exec uvicorn main:app --host 0.0.0.0 --port 8080 --workers 1
+exec uvicorn main:app --host 0.0.0.0 --port "${APP_PORT:-8080}" --workers 1

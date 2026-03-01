@@ -28,12 +28,12 @@ COPY scripts/ /app/scripts/
 # This runs at build time so the image is ready to go
 RUN python /app/scripts/download_model.py --voice en_US-lessac-medium --output-dir /app/models
 
-# Expose the API port
-EXPOSE 5000
+# Expose the API port (matches TTS_PORT in .env; avoids macOS 5000 conflict)
+EXPOSE 5050
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
+    CMD curl -f http://localhost:5050/health || exit 1
 
 # Run the TTS server
-CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "5050"]

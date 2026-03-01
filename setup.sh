@@ -245,6 +245,13 @@ if [[ "$CONFIGURE_ENV" == "true" ]]; then
     prompt_yn "Enable remote-save service?" REMOTE_SAVE_ENABLED "y"
     env_set .env REMOTE_SAVE_ENABLED "$REMOTE_SAVE_ENABLED"
 
+    # Service ports (single source of truth for docker-compose.yml, scripts, etc.)
+    env_set .env APP_PORT           "8080"
+    env_set .env CLASSIFIER_PORT    "8001"
+    env_set .env LLM_PORT           "8000"
+    env_set .env TTS_PORT           "5050"
+    env_set .env REMOTE_SAVE_PORT   "7000"
+
     # Endpoints are always localhost in native mode — set automatically
     env_set .env CLASSIFIER_ENDPOINT "http://localhost:8001"
     env_set .env LLM_ENDPOINT        "http://localhost:8000"
@@ -508,7 +515,7 @@ Type=simple
 WorkingDirectory=${SCRIPT_DIR}/app
 Environment="PATH=${VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=${SCRIPT_DIR}/.env
-ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port 8080
+ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port \${APP_PORT:-8080}
 Restart=on-failure
 RestartSec=5
 User=${USER}
@@ -627,7 +634,7 @@ if (( ${#ERRORS[@]} > 0 )); then
 fi
 
 echo ""
-echo -e "  ${BOLD}Access:${NC} http://${PI_IP}:8080/admin/"
+echo -e "  ${BOLD}Access:${NC} http://${PI_IP}:${APP_PORT:-8080}/admin/"
 echo ""
 if [[ "${ENABLE_SYSTEMD:-false}" == "true" ]]; then
     echo "  Next: reboot, or run ${BOLD}./start.sh${NC} now"

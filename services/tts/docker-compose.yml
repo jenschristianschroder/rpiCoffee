@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: local-tts
     ports:
-      - "5000:5000"
+      - "${TTS_PORT:-5050}:${TTS_PORT:-5050}"
     volumes:
       # Persist downloaded voice models across rebuilds
       - tts-models:/app/models

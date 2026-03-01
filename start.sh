@@ -123,8 +123,8 @@ PI_IP="${PI_IP:-localhost}"
 echo ""
 ok "All services up — starting application"
 echo ""
-echo -e "  ${BOLD}Admin UI:${NC}  http://${PI_IP}:8080/admin/"
+echo -e "  ${BOLD}Admin UI:${NC}  http://${PI_IP}:${APP_PORT:-8080}/admin/"
 echo ""
 
 cd app
-exec uvicorn main:app --host 0.0.0.0 --port 8080
+exec uvicorn main:app --host 0.0.0.0 --port "${APP_PORT:-8080}"

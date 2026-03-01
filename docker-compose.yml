@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: rpicoffee-classifier
     ports:
-      - "8001:8001"
+      - "${CLASSIFIER_PORT:-8001}:${CLASSIFIER_PORT:-8001}"
     networks:
       - coffee-net
     restart: unless-stopped
@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile
     container_name: rpicoffee-llm
     ports:
-      - "8000:8000"
+      - "${LLM_PORT:-8000}:${LLM_PORT:-8000}"
     environment:
       - OMP_NUM_THREADS=4
       - THREADS=4
@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: rpicoffee-tts
     ports:
-      - "5050:5000"
+      - "${TTS_PORT:-5050}:${TTS_PORT:-5050}"
     networks:
       - coffee-net
     restart: unless-stopped
@@ -54,7 +54,7 @@ services:
       dockerfile: Dockerfile
     container_name: rpicoffee-remote-save
     ports:
-      - "7000:7000"
+      - "${REMOTE_SAVE_PORT:-7000}:${REMOTE_SAVE_PORT:-7000}"
     env_file:
       - ./services/remote-save/.env
     networks:
