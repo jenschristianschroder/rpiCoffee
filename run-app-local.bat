@@ -33,14 +33,19 @@ echo [*] Stopping Docker app container (if running)...
 docker compose stop app 2>nul
 
 REM Point at Docker services (exposed ports on localhost)
-set CLASSIFIER_ENDPOINT=http://localhost:8001
-set LLM_ENDPOINT=http://localhost:8000
-set TTS_ENDPOINT=http://localhost:5050
-set REMOTE_SAVE_ENDPOINT=http://localhost:7000
+set CLASSIFIER_PORT=8001
+set LLM_PORT=8000
+set TTS_PORT=5050
+set REMOTE_SAVE_PORT=7000
+set APP_PORT=8080
+set CLASSIFIER_ENDPOINT=http://localhost:%CLASSIFIER_PORT%
+set LLM_ENDPOINT=http://localhost:%LLM_PORT%
+set TTS_ENDPOINT=http://localhost:%TTS_PORT%
+set REMOTE_SAVE_ENDPOINT=http://localhost:%REMOTE_SAVE_PORT%
 set SETTINGS_DIR=%ROOT%data
 set DATA_DIR=%ROOT%data
 
-echo [*] Starting main app on port 8080 (host, USB sensor accessible)...
+echo [*] Starting main app on port %APP_PORT% (host, USB sensor accessible)...
 cd /d "%ROOT%app"
 call "%VENV%"
-uvicorn main:app --host 0.0.0.0 --port 8080 --reload --timeout-graceful-shutdown 3
+uvicorn main:app --host 0.0.0.0 --port %APP_PORT% --reload --timeout-graceful-shutdown 3

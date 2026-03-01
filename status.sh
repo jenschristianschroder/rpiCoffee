@@ -158,7 +158,7 @@ declare -A ENDPOINT_INFO # component → host:port
 declare -A EXTRA         # component → extra info
 
 # --- App (uvicorn) ---
-APP_PORT=8080
+APP_PORT="${APP_PORT:-8080}"
 APP_URL="http://localhost:${APP_PORT}"
 STATUS[app]="$(systemd_status rpicoffee-app)"
 HEALTH[app]="$(http_health "${APP_URL}/health")"

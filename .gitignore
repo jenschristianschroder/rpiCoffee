@@ -7,6 +7,7 @@ __pycache__/
 
 # Environment variables
 .env
+!.env.example
 
 # Runtime data (generated audio, settings, saved brews)
 /data/audio/

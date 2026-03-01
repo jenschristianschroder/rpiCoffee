@@ -38,7 +38,7 @@ _DEFAULTS: dict[str, Any] = {
     "LLM_OLLAMA_ENDPOINT": "http://localhost:11434",  # Default endpoint for Ollama / hailo-ollama
     "LLM_MODEL": "qwen2:1.5b",  # Ollama model name (only used when LLM_BACKEND=ollama)
     "TTS_ENABLED": True,
-    "TTS_ENDPOINT": "http://tts:5000",
+    "TTS_ENDPOINT": "http://tts:5050",
     "CLASSIFIER_ENABLED": True,
     "CLASSIFIER_ENDPOINT": "http://classifier:8001",
     # Sensor
