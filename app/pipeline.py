@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
@@ -72,7 +72,7 @@ async def run_pipeline(
         "error": None,
     }
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now().astimezone()
 
     # ── Step 0: Collect sensor data ──────────────────────────────
     try:
@@ -192,7 +192,7 @@ async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
         "error": None,
     }
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now().astimezone()
 
     # ── Step 0: Stream sensor data ───────────────────────────────
     yield _sse("status", {"message": "Collecting sensor data…"})

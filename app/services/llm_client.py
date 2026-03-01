@@ -10,7 +10,7 @@ The active backend is selected via ``config.LLM_BACKEND``.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -64,7 +64,7 @@ class LLMClient:
             return None
 
         if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
+            timestamp = datetime.now().astimezone()
 
         # Resolve from config if not explicitly provided
         if tts is None:
