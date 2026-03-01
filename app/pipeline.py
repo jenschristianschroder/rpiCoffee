@@ -35,6 +35,18 @@ logger = logging.getLogger("rpicoffee.pipeline")
 AUDIO_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))) / "audio"
 
 
+def _cleanup_audio() -> None:
+    """Remove old WAV files from the audio directory."""
+    try:
+        for wav in AUDIO_DIR.glob("*.wav"):
+            try:
+                wav.unlink()
+            except OSError:
+                logger.warning("Could not delete %s", wav)
+    except OSError:
+        logger.warning("Could not list audio directory for cleanup")
+
+
 async def run_pipeline(
     sensor_data: list[dict[str, float]] | None = None,
     on_progress: Any | None = None,
@@ -145,6 +157,7 @@ async def run_pipeline(
             if not result["error"]:
                 result["error"] = "Speech synthesis unavailable"
         else:
+            _cleanup_audio()
             audio_id = uuid.uuid4().hex[:12]
             audio_path = AUDIO_DIR / f"{audio_id}.wav"
             AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -269,6 +282,7 @@ async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
             if not result["error"]:
                 result["error"] = "Speech synthesis unavailable"
         else:
+            _cleanup_audio()
             audio_id = uuid.uuid4().hex[:12]
             audio_path = AUDIO_DIR / f"{audio_id}.wav"
             AUDIO_DIR.mkdir(parents=True, exist_ok=True)
