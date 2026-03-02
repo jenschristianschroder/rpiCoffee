@@ -217,6 +217,10 @@ def _start_sensor() -> None:
         acc_range=cfg.get("SENSOR_ACC_RANGE_G", 4),
         gyro_range=cfg.get("SENSOR_GYRO_RANGE_DPS", 500),
         filter_hz=cfg.get("SENSOR_FILTER_HZ", 42),
+        trigger_sources=cfg.get("SENSOR_TRIGGER_SOURCES", "accel"),
+        trigger_combine_mode=cfg.get("SENSOR_TRIGGER_COMBINE_MODE", "or"),
+        gyro_threshold=cfg.get("SENSOR_GYRO_THRESHOLD", 10.0),
+        gyro_rms_window_s=cfg.get("SENSOR_GYRO_RMS_WINDOW_S", 1.0),
     )
     _sensor_started = True
 

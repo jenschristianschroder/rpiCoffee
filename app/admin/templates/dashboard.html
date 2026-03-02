@@ -175,13 +175,19 @@ let neutralizeGravity = {{ config['SENSOR_NEUTRALIZE_GRAVITY']|tojson }};
 const maxVals = {};
 KEYS.forEach(function(k) { maxVals[k] = 0; });
 let accelRms = 0;
+let gyroRms = 0;
 let RMS_WINDOW_S = {{ config['SENSOR_RMS_WINDOW_S'] }};
 let VIBRATION_THRESHOLD = {{ config['SENSOR_VIBRATION_THRESHOLD'] }};
 let SAMPLE_RATE = {{ config['SENSOR_SAMPLE_RATE_HZ'] }};
+let GYRO_THRESHOLD = {{ config['SENSOR_GYRO_THRESHOLD'] }};
+let GYRO_RMS_WINDOW_S = {{ config['SENSOR_GYRO_RMS_WINDOW_S'] }};
+let TRIGGER_SOURCES = {{ config['SENSOR_TRIGGER_SOURCES']|tojson }};
 
 function updateRmsLabel() {
     var el = document.getElementById('accel-rms-lbl');
     if (el) el.innerHTML = 'Accel RMS <small>(' + RMS_WINDOW_S + 's, thr\u00a0' + VIBRATION_THRESHOLD + 'g)</small>';
+    var gel = document.getElementById('gyro-rms-lbl');
+    if (gel) gel.innerHTML = 'Gyro RMS <small>(' + GYRO_RMS_WINDOW_S + 's, thr\u00a0' + GYRO_THRESHOLD + 'dps)</small>';
 }
 
 function createLiveChart() {
@@ -272,6 +278,37 @@ function computeRms() {
     accelRms = Math.sqrt(sum2 / mags.length);
 }
 
+function computeGyroRms() {
+    // Compute AC-coupled RMS of gyroscope magnitude over the gyro RMS window,
+    // matching the trigger logic in picoquake_acq.py for gyro signals.
+    if (!liveChart || !_gyroEnabled) { gyroRms = 0; return; }
+    var gxIdx = KEYS.indexOf('gyro_x'), gyIdx = KEYS.indexOf('gyro_y'), gzIdx = KEYS.indexOf('gyro_z');
+    if (gxIdx < 0 || gyIdx < 0 || gzIdx < 0) { gyroRms = 0; return; }
+    var dsx = liveChart.data.datasets[gxIdx].data;
+    var dsy = liveChart.data.datasets[gyIdx].data;
+    var dsz = liveChart.data.datasets[gzIdx].data;
+    var n = dsx.length;
+    if (n === 0) { gyroRms = 0; return; }
+    var windowSamples = Math.max(1, Math.round(GYRO_RMS_WINDOW_S * SAMPLE_RATE));
+    var start = Math.max(0, n - windowSamples);
+    var mags = [], magSum = 0;
+    for (var j = start; j < n; j++) {
+        var rx = dsx[j]._raw !== undefined ? dsx[j]._raw : dsx[j].y;
+        var ry = dsy[j]._raw !== undefined ? dsy[j]._raw : dsy[j].y;
+        var rz = dsz[j]._raw !== undefined ? dsz[j]._raw : dsz[j].y;
+        var mag = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        mags.push(mag);
+        magSum += mag;
+    }
+    var meanMag = magSum / mags.length;
+    var sum2 = 0;
+    for (var k = 0; k < mags.length; k++) {
+        var diff = mags[k] - meanMag;
+        sum2 += diff * diff;
+    }
+    gyroRms = Math.sqrt(sum2 / mags.length);
+}
+
 function updateStatsDisplay() {
     KEYS.forEach(k => {
         const maxEl = document.getElementById('max-' + k);
@@ -280,7 +317,14 @@ function updateStatsDisplay() {
     const rmsEl = document.getElementById('accel-rms');
     if (rmsEl) {
         rmsEl.textContent = accelRms.toFixed(4);
-        rmsEl.style.color = accelRms > VIBRATION_THRESHOLD ? '#ef4444' : '#22c55e';
+        var accelIsSource = (TRIGGER_SOURCES === 'accel' || TRIGGER_SOURCES === 'both');
+        rmsEl.style.color = (accelIsSource && accelRms > VIBRATION_THRESHOLD) ? '#ef4444' : '#22c55e';
+    }
+    const gyroRmsEl = document.getElementById('gyro-rms');
+    if (gyroRmsEl) {
+        gyroRmsEl.textContent = gyroRms.toFixed(2);
+        var gyroIsSource = (TRIGGER_SOURCES === 'gyro' || TRIGGER_SOURCES === 'both');
+        gyroRmsEl.style.color = (gyroIsSource && gyroRms > GYRO_THRESHOLD) ? '#ef4444' : '#22c55e';
     }
 }
 
@@ -296,6 +340,7 @@ function resetMax() {
         });
     }
     computeRms();
+    computeGyroRms();
     updateStatsDisplay();
 }
 
@@ -314,6 +359,7 @@ function toggleGravity() {
         if (abs > maxVals['acc_z']) maxVals['acc_z'] = abs;
     });
     computeRms();
+    computeGyroRms();
     updateStatsDisplay();
     liveChart.update('none');
 }
@@ -368,6 +414,7 @@ function connectStream() {
         liveChart.update('none');
 
         computeRms();
+        computeGyroRms();
         updateStatsDisplay();
         document.getElementById('live-dot').className = 'live-dot on';
         document.getElementById('live-label').textContent = 'Live';
@@ -414,7 +461,7 @@ async function saveSensorConfig(e) {
     const body = {};
     fd.forEach((v, k) => { body[k] = v; });
     // Ensure unchecked checkboxes are sent as false
-    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED', 'SENSOR_NEUTRALIZE_GRAVITY'].forEach(k => {
+    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED', 'SENSOR_NEUTRALIZE_GRAVITY'].forEach(function(k) {
         var el = document.getElementById(k);
         body[k] = el && el.checked ? 'true' : 'false';
     });
@@ -444,6 +491,11 @@ async function saveSensorConfig(e) {
         if (newThreshold > 0) VIBRATION_THRESHOLD = newThreshold;
         const newRate = parseInt(body['SENSOR_SAMPLE_RATE_HZ']);
         if (newRate > 0) SAMPLE_RATE = newRate;
+        const newGyroThreshold = parseFloat(body['SENSOR_GYRO_THRESHOLD']);
+        if (newGyroThreshold > 0) GYRO_THRESHOLD = newGyroThreshold;
+        const newGyroRmsWindow = parseFloat(body['SENSOR_GYRO_RMS_WINDOW_S']);
+        if (newGyroRmsWindow > 0) GYRO_RMS_WINDOW_S = newGyroRmsWindow;
+        if (body['SENSOR_TRIGGER_SOURCES']) TRIGGER_SOURCES = body['SENSOR_TRIGGER_SOURCES'];
         updateRmsLabel();
 
         const r2 = await fetch('/api/sensor/restart', { method: 'POST' });
@@ -556,6 +608,9 @@ document.addEventListener('DOMContentLoaded', function() {
         {% if config['SENSOR_ACC_ENABLED'] %}
         <div class="stat-card"><div class="lbl" id="accel-rms-lbl">Accel RMS</div><div class="val rms" id="accel-rms" style="color:#22c55e;">0.0000</div></div>
         {% endif %}
+        {% if config['SENSOR_GYRO_ENABLED'] %}
+        <div class="stat-card"><div class="lbl" id="gyro-rms-lbl">Gyro RMS</div><div class="val rms" id="gyro-rms" style="color:#22c55e;">0.00</div></div>
+        {% endif %}
     </div>
     <div style="text-align:center;margin-bottom:0.5rem;">
         <small style="cursor:pointer;text-decoration:underline;color:var(--pico-muted-color);" onclick="resetMax()">↺ Reset max values</small>
@@ -589,17 +644,44 @@ document.addEventListener('DOMContentLoaded', function() {
             </label>
         </div>
         <div class="grid">
-            <label for="SENSOR_VIBRATION_THRESHOLD">Vibration Threshold (g)
-                <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.0001">
-                {% if descriptions.get('SENSOR_VIBRATION_THRESHOLD') %}<small>{{ descriptions['SENSOR_VIBRATION_THRESHOLD'] }}</small>{% endif %}
+            <label for="SENSOR_TRIGGER_SOURCES">Trigger Source
+                <select id="SENSOR_TRIGGER_SOURCES" name="SENSOR_TRIGGER_SOURCES">
+                    <option value="accel" {% if config['SENSOR_TRIGGER_SOURCES'] == 'accel' %}selected{% endif %}>Accelerometer</option>
+                    <option value="gyro" {% if config['SENSOR_TRIGGER_SOURCES'] == 'gyro' %}selected{% endif %}>Gyroscope</option>
+                    <option value="both" {% if config['SENSOR_TRIGGER_SOURCES'] == 'both' %}selected{% endif %}>Both</option>
+                </select>
+                {% if descriptions.get('SENSOR_TRIGGER_SOURCES') %}<small>{{ descriptions['SENSOR_TRIGGER_SOURCES'] }}</small>{% endif %}
             </label>
-            <label for="SENSOR_RMS_WINDOW_S">RMS Window (s)
-                <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
-                {% if descriptions.get('SENSOR_RMS_WINDOW_S') %}<small>{{ descriptions['SENSOR_RMS_WINDOW_S'] }}</small>{% endif %}
+            <label for="SENSOR_TRIGGER_COMBINE_MODE" id="combine-mode-label"{% if config['SENSOR_TRIGGER_SOURCES'] != 'both' %} style="display:none"{% endif %}>Combine Mode
+                <select id="SENSOR_TRIGGER_COMBINE_MODE" name="SENSOR_TRIGGER_COMBINE_MODE">
+                    <option value="or" {% if config['SENSOR_TRIGGER_COMBINE_MODE'] == 'or' %}selected{% endif %}>OR (either triggers)</option>
+                    <option value="and" {% if config['SENSOR_TRIGGER_COMBINE_MODE'] == 'and' %}selected{% endif %}>AND (both required)</option>
+                </select>
+                {% if descriptions.get('SENSOR_TRIGGER_COMBINE_MODE') %}<small>{{ descriptions['SENSOR_TRIGGER_COMBINE_MODE'] }}</small>{% endif %}
             </label>
             <label for="SENSOR_CHART_WINDOW_S">Chart Window (s)
                 <input type="number" id="SENSOR_CHART_WINDOW_S" name="SENSOR_CHART_WINDOW_S" value="{{ config['SENSOR_CHART_WINDOW_S'] }}" min="5" max="120" step="5">
                 {% if descriptions.get('SENSOR_CHART_WINDOW_S') %}<small>{{ descriptions['SENSOR_CHART_WINDOW_S'] }}</small>{% endif %}
+            </label>
+        </div>
+        <div class="grid" id="accel-threshold-row"{% if config['SENSOR_TRIGGER_SOURCES'] == 'gyro' %} style="display:none"{% endif %}>
+            <label for="SENSOR_VIBRATION_THRESHOLD">Accel Threshold (g)
+                <input type="number" id="SENSOR_VIBRATION_THRESHOLD" name="SENSOR_VIBRATION_THRESHOLD" value="{{ config['SENSOR_VIBRATION_THRESHOLD'] }}" min="0" step="0.0001">
+                {% if descriptions.get('SENSOR_VIBRATION_THRESHOLD') %}<small>{{ descriptions['SENSOR_VIBRATION_THRESHOLD'] }}</small>{% endif %}
+            </label>
+            <label for="SENSOR_RMS_WINDOW_S">Accel RMS Window (s)
+                <input type="number" id="SENSOR_RMS_WINDOW_S" name="SENSOR_RMS_WINDOW_S" value="{{ config['SENSOR_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
+                {% if descriptions.get('SENSOR_RMS_WINDOW_S') %}<small>{{ descriptions['SENSOR_RMS_WINDOW_S'] }}</small>{% endif %}
+            </label>
+        </div>
+        <div class="grid" id="gyro-threshold-row"{% if config['SENSOR_TRIGGER_SOURCES'] == 'accel' %} style="display:none"{% endif %}>
+            <label for="SENSOR_GYRO_THRESHOLD">Gyro Threshold (dps)
+                <input type="number" id="SENSOR_GYRO_THRESHOLD" name="SENSOR_GYRO_THRESHOLD" value="{{ config['SENSOR_GYRO_THRESHOLD'] }}" min="0" step="0.1">
+                {% if descriptions.get('SENSOR_GYRO_THRESHOLD') %}<small>{{ descriptions['SENSOR_GYRO_THRESHOLD'] }}</small>{% endif %}
+            </label>
+            <label for="SENSOR_GYRO_RMS_WINDOW_S">Gyro RMS Window (s)
+                <input type="number" id="SENSOR_GYRO_RMS_WINDOW_S" name="SENSOR_GYRO_RMS_WINDOW_S" value="{{ config['SENSOR_GYRO_RMS_WINDOW_S'] }}" min="0.05" max="5" step="0.05">
+                {% if descriptions.get('SENSOR_GYRO_RMS_WINDOW_S') %}<small>{{ descriptions['SENSOR_GYRO_RMS_WINDOW_S'] }}</small>{% endif %}
             </label>
         </div>
         <div class="grid">
@@ -863,6 +945,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     backendSel.addEventListener('change', toggleBackendFields);
     toggleBackendFields();
+})();
+
+// Toggle trigger source fields visibility
+(function() {
+    var srcSel = document.getElementById('SENSOR_TRIGGER_SOURCES');
+    var combineLabel = document.getElementById('combine-mode-label');
+    var accelRow = document.getElementById('accel-threshold-row');
+    var gyroRow = document.getElementById('gyro-threshold-row');
+
+    function toggleTriggerFields() {
+        var src = srcSel.value;
+        combineLabel.style.display = (src === 'both') ? '' : 'none';
+        accelRow.style.display = (src === 'gyro') ? 'none' : '';
+        gyroRow.style.display = (src === 'accel') ? 'none' : '';
+    }
+    srcSel.addEventListener('change', toggleTriggerFields);
+    // Initial state already set via Jinja template attributes
+})();
+
+// Toggle trigger source fields visibility
+(function() {
+    var srcSel = document.getElementById('SENSOR_TRIGGER_SOURCES');
+    var combineLabel = document.getElementById('combine-mode-label');
+    var accelRow = document.getElementById('accel-threshold-row');
+    var gyroRow = document.getElementById('gyro-threshold-row');
+
+    function toggleTriggerFields() {
+        var src = srcSel.value;
+        combineLabel.style.display = (src === 'both') ? '' : 'none';
+        accelRow.style.display = (src === 'gyro') ? 'none' : '';
+        gyroRow.style.display = (src === 'accel') ? 'none' : '';
+    }
+    srcSel.addEventListener('change', toggleTriggerFields);
+    // Initial state already set via Jinja template attributes
 })();
 
 // Toggle Sensor ID / Serial Port based on SENSOR_MODE selection

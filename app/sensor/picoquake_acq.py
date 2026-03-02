@@ -259,6 +259,16 @@ def main_acquisition():
     parser.add_argument("--filter-hz", type=int, default=42,
                         choices=[42, 84, 170, 734],
                         help="Low-pass filter cutoff in Hz")
+    parser.add_argument("--trigger-sources", default="accel",
+                        choices=["accel", "gyro", "both"],
+                        help="Which signal(s) trigger auto-capture")
+    parser.add_argument("--trigger-combine-mode", default="or",
+                        choices=["or", "and"],
+                        help="Combine mode when both sources active: 'or' or 'and'")
+    parser.add_argument("--gyro-threshold", type=float, default=10.0,
+                        help="RMS gyro threshold (dps) for auto-trigger")
+    parser.add_argument("--gyro-rms-window", type=float, default=1.0,
+                        help="Gyro RMS averaging window in seconds")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -312,8 +322,10 @@ def main_acquisition():
             acc_range=_ACC_RANGE_MAP[args.acc_range],
             gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
         )
-        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | threshold=%.1fg | duration=%ds",
-                    args.rate, args.acc_range, args.gyro_range, args.filter_hz, args.threshold, args.duration)
+        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds",
+                    args.rate, args.acc_range, args.gyro_range, args.filter_hz,
+                    args.threshold, args.gyro_threshold,
+                    args.trigger_sources, args.trigger_combine_mode, args.duration)
         return dev
 
     # ── Initial connection ────────────────────────────────────────
@@ -340,9 +352,13 @@ def main_acquisition():
         samples_since_log = 0
 
         # Auto-trigger state
-        rms_window_size = max(1, int(args.rate * args.rms_window))  # configurable RMS window
+        rms_window_size = max(1, int(args.rate * args.rms_window))  # configurable accel RMS window
+        gyro_rms_window_size = max(1, int(args.rate * args.gyro_rms_window))  # configurable gyro RMS window
         recent_accel: list[float] = []
+        recent_gyro: list[float] = []
         recording_count = 0  # samples captured since recording started
+        use_accel = args.trigger_sources in ("accel", "both")
+        use_gyro = args.trigger_sources in ("gyro", "both")
 
         try:
             while True:
@@ -363,10 +379,18 @@ def main_acquisition():
                     batch.append(row)
 
                     # Track accel magnitude for auto-trigger
-                    mag = (frame.acc_x**2 + frame.acc_y**2 + frame.acc_z**2) ** 0.5
-                    recent_accel.append(mag)
-                    if len(recent_accel) > rms_window_size:
-                        recent_accel.pop(0)
+                    if use_accel:
+                        mag = (frame.acc_x**2 + frame.acc_y**2 + frame.acc_z**2) ** 0.5
+                        recent_accel.append(mag)
+                        if len(recent_accel) > rms_window_size:
+                            recent_accel.pop(0)
+
+                    # Track gyro magnitude for auto-trigger
+                    if use_gyro:
+                        gyro_mag = (frame.gyro_x**2 + frame.gyro_y**2 + frame.gyro_z**2) ** 0.5
+                        recent_gyro.append(gyro_mag)
+                        if len(recent_gyro) > gyro_rms_window_size:
+                            recent_gyro.pop(0)
 
                 samples_since_log += len(frames)
 
@@ -407,11 +431,17 @@ def main_acquisition():
                 # ── Periodic logging ─────────────────────────────────
                 if now - last_log >= 5.0:
                     actual_rate = samples_since_log / (now - last_log)
-                    _n = max(1, len(recent_accel))
-                    _mean = sum(recent_accel) / _n
-                    rms = (sum((a - _mean) ** 2 for a in recent_accel) / _n) ** 0.5
-                    logger.info("samples=%d  rate=%.1f Hz  drops=%d  rms=%.2fg  recording=%d",
-                                ring.sample_counter, actual_rate, ring.drop_counter, rms, flag)
+                    # Accel RMS
+                    _na = max(1, len(recent_accel))
+                    _mean_a = sum(recent_accel) / _na if recent_accel else 0
+                    accel_rms_log = (sum((a - _mean_a) ** 2 for a in recent_accel) / _na) ** 0.5 if recent_accel else 0
+                    # Gyro RMS
+                    _ng = max(1, len(recent_gyro))
+                    _mean_g = sum(recent_gyro) / _ng if recent_gyro else 0
+                    gyro_rms_log = (sum((g - _mean_g) ** 2 for g in recent_gyro) / _ng) ** 0.5 if recent_gyro else 0
+                    logger.info("samples=%d  rate=%.1f Hz  drops=%d  accel_rms=%.3fg  gyro_rms=%.1fdps  trigger=%s  recording=%d",
+                                ring.sample_counter, actual_rate, ring.drop_counter,
+                                accel_rms_log, gyro_rms_log, args.trigger_sources, flag)
                     last_log = now
                     samples_since_log = 0
 
