@@ -148,6 +148,7 @@ PKGS=(
     git curl wget
     build-essential cmake
     libgomp1 libportaudio2
+    chromium-browser
 )
 
 info "Installing: ${PKGS[*]}"
@@ -526,9 +527,73 @@ User=${USER}
 WantedBy=multi-user.target
 EOF
 
+    # Kiosk (Chromium auto-launch) unit
+    KIOSK_URL="http://localhost:${APP_PORT:-8080}"
+
+    # Create the kiosk launcher helper script
+    cat > "${SCRIPT_DIR}/kiosk.sh" <<'KIOSK'
+#!/usr/bin/env bash
+#
+# rpiCoffee – Kiosk launcher
+#
+# Waits for the rpiCoffee app to become healthy, then launches
+# Chromium in app mode (maximised, no browser chrome).
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+set -a; source "$SCRIPT_DIR/.env"; set +a
+
+APP_URL="http://localhost:${APP_PORT:-8080}"
+MAX_WAIT=120   # seconds
+ELAPSED=0
+
+echo "[kiosk] Waiting for rpiCoffee app at $APP_URL ..."
+while ! curl -sf --max-time 2 "$APP_URL" > /dev/null 2>&1; do
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    if (( ELAPSED >= MAX_WAIT )); then
+        echo "[kiosk] App did not become ready after ${MAX_WAIT}s – aborting"
+        exit 1
+    fi
+done
+echo "[kiosk] App is ready – launching Chromium"
+
+DISPLAY=:0 chromium-browser \
+  --app="$APP_URL" \
+  --start-maximized \
+  --password-store=basic \
+  --disable-infobars \
+  &
+KIOSK
+    chmod +x "${SCRIPT_DIR}/kiosk.sh"
+    ok "Created kiosk launcher script (kiosk.sh)"
+
+    sudo tee /etc/systemd/system/rpicoffee-kiosk.service > /dev/null <<EOF
+[Unit]
+Description=rpiCoffee Chromium Kiosk
+After=rpicoffee-app.service
+Requires=rpicoffee-app.service
+
+[Service]
+Type=simple
+WorkingDirectory=${SCRIPT_DIR}
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/${USER}/.Xauthority"
+ExecStartPre=/bin/sleep 5
+ExecStart=${SCRIPT_DIR}/kiosk.sh
+Restart=on-failure
+RestartSec=10
+User=${USER}
+
+[Install]
+WantedBy=graphical.target
+EOF
+    ok "Kiosk systemd service created"
+
     sudo systemctl daemon-reload
-    sudo systemctl enable rpicoffee-services rpicoffee-app
-    ok "Systemd services created and enabled"
+    sudo systemctl enable rpicoffee-services rpicoffee-app rpicoffee-kiosk
+    ok "Systemd services created and enabled (including kiosk)"
 else
     info "Skipping systemd setup"
 fi
@@ -613,6 +678,7 @@ fi
 # Systemd
 if [[ "${ENABLE_SYSTEMD:-false}" == "true" ]]; then
     ok "Systemd auto-start: enabled"
+    ok "Kiosk mode: Chromium will open http://localhost:${APP_PORT:-8080} on boot"
 else
     info "Systemd auto-start: not configured"
 fi
