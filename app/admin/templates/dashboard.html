@@ -30,6 +30,18 @@
     .chart-wrap { position: relative; height: 280px; margin-bottom: 0.5rem; }
     .stream-meta { font-size: 0.8rem; color: var(--pico-muted-color); text-align: right; }
     @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    .pw-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0.75rem 0; max-width: 320px; }
+    .pw-numpad button {
+        font-size: 1.4rem; padding: 0.7rem 0; border-radius: 0.5rem;
+        border: 1px solid var(--pico-muted-border-color);
+        background: var(--pico-card-background-color); color: var(--pico-color);
+        cursor: pointer; touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent; user-select: none;
+        transition: background 0.15s;
+    }
+    .pw-numpad button:active { background: var(--pico-primary-background); }
+    .pw-numpad .btn-clear { font-size: 0.95rem; }
+    .pw-numpad .btn-back { font-size: 1.1rem; }
 </style>
 <script>
 async function checkServices() {
@@ -748,18 +760,50 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- Settings -->
 <div class="card">
     <h3>Change Password</h3>
-    <form method="post" action="/admin/password">
+    <form method="post" action="/admin/password" autocomplete="off">
         <div class="grid">
             <label for="current_password">Current Password
-                <input type="password" id="current_password" name="current_password" required>
+                <input type="password" id="current_password" name="current_password" required
+                       inputmode="none" readonly onfocus="activatePwField(this)"
+                       style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;">
             </label>
             <label for="new_password">New Password
-                <input type="password" id="new_password" name="new_password" required minlength="4">
+                <input type="password" id="new_password" name="new_password" required minlength="4"
+                       inputmode="none" readonly onfocus="activatePwField(this)"
+                       style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;">
             </label>
+        </div>
+        <div class="pw-numpad" id="pw-numpad">
+            <button type="button" onclick="pwNumPress('1')">1</button>
+            <button type="button" onclick="pwNumPress('2')">2</button>
+            <button type="button" onclick="pwNumPress('3')">3</button>
+            <button type="button" onclick="pwNumPress('4')">4</button>
+            <button type="button" onclick="pwNumPress('5')">5</button>
+            <button type="button" onclick="pwNumPress('6')">6</button>
+            <button type="button" onclick="pwNumPress('7')">7</button>
+            <button type="button" onclick="pwNumPress('8')">8</button>
+            <button type="button" onclick="pwNumPress('9')">9</button>
+            <button type="button" class="btn-clear" onclick="pwNumClear()">Clear</button>
+            <button type="button" onclick="pwNumPress('0')">0</button>
+            <button type="button" class="btn-back" onclick="pwNumBack()">&#9003;</button>
         </div>
         <button type="submit">Change Password</button>
     </form>
 </div>
+<script>
+var _activePwField = null;
+function activatePwField(el) {
+    document.querySelectorAll('#current_password,#new_password').forEach(function(f){ f.style.outline=''; });
+    el.style.outline = '2px solid var(--pico-primary)';
+    _activePwField = el;
+}
+function pwNumPress(d) {
+    if (!_activePwField) activatePwField(document.getElementById('current_password'));
+    _activePwField.value += d;
+}
+function pwNumClear() { if (_activePwField) _activePwField.value = ''; }
+function pwNumBack() { if (_activePwField) _activePwField.value = _activePwField.value.slice(0, -1); }
+</script>
 
 <div class="card">
     <h3>Configuration</h3>

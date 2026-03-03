@@ -70,7 +70,7 @@ async def login_submit(request: Request, password: str = Form(...)):
 
 @router.get("/logout")
 async def logout():
-    response = RedirectResponse(url="/admin/login", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("session")
     return response
 
