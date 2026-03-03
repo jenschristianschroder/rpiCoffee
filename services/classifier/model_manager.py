@@ -154,10 +154,8 @@ class ModelManager:
 
         Each CSV has columns: label, elapsed_s, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
 
-        Also scans for *.csv.sample files in the parent of data_dir (e.g. /data/).
         """
         data_path = Path(data_dir) if data_dir else TRAINING_DIR
-        parent_dir = data_path.parent  # /data/ — where .csv.sample files live
 
         self.training_status = TrainingStatus()
         self.training_status.is_training = True
@@ -181,20 +179,6 @@ class ModelManager:
                             all_labels.append(label)
                         except Exception as e:
                             logger.warning("Failed to process %s: %s", csv_file, e)
-
-            # 2. Load from .csv.sample files in /data/
-            sample_files = sorted(parent_dir.glob("*.csv.sample")) + sorted(parent_dir.glob("*.csv"))
-            for csv_file in sample_files:
-                # Skip files in subdirectories
-                if csv_file.parent != parent_dir:
-                    continue
-                # Skip non-sample files that might be something else
-                try:
-                    features, label = extract_features_from_csv(str(csv_file))
-                    all_features.append(features)
-                    all_labels.append(label)
-                except Exception as e:
-                    logger.warning("Failed to process %s: %s", csv_file, e)
 
             if not all_features:
                 self.training_status.is_training = False
