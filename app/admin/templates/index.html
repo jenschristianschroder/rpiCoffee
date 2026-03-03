@@ -209,7 +209,7 @@
   <!-- Bottom row: full-width chart -->
   <div class="bottom-row">
     <div class="chart-area">
-        <h4>Sensor Data <small style="font-weight:normal;color:var(--pico-muted-color);font-size:0.7rem;margin-left:0.5rem;">RMS {{ config['SENSOR_RMS_WINDOW_S'] }}s &middot; thr {{ config['SENSOR_VIBRATION_THRESHOLD'] }}g{% if config['SENSOR_NEUTRALIZE_GRAVITY'] %} &middot; Z&minus;1g{% endif %}</small></h4>
+        <h4>Sensor Data <small style="font-weight:normal;color:var(--pico-muted-color);font-size:0.7rem;margin-left:0.5rem;">{% set _tsrc = config.get('SENSOR_TRIGGER_SOURCES', 'accel') %}{% if _tsrc in ('accel', 'both') %}Accel RMS {{ config['SENSOR_RMS_WINDOW_S'] }}s &middot; thr {{ config['SENSOR_VIBRATION_THRESHOLD'] }}g{% endif %}{% if _tsrc == 'both' %} &middot; {% endif %}{% if _tsrc in ('gyro', 'both') %}Gyro RMS {{ config.get('SENSOR_GYRO_RMS_WINDOW_S', '1.0') }}s &middot; thr {{ config.get('SENSOR_GYRO_THRESHOLD', '10.0') }}dps{% endif %}{% if _tsrc == 'both' %} &middot; {{ config.get('SENSOR_TRIGGER_COMBINE_MODE', 'or')|upper }}{% endif %}{% if config['SENSOR_NEUTRALIZE_GRAVITY'] %} &middot; Z&minus;1g{% endif %}</small></h4>
         <div class="chart-placeholder" id="chart-placeholder">Waiting for brew…</div>
         <div class="chart-container">
             <canvas id="sensor-chart" style="display:none;"></canvas>

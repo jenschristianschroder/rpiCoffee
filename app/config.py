@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 _APP_DIR = Path(__file__).resolve().parent
 _LOCAL_DATA_DIR = _APP_DIR.parent / "data"
 
-# Secrets – loaded from environment / .env only, never persisted to settings.json
+# Secrets  loaded from environment / .env only, never persisted to settings.json
 _ENV_ONLY: dict[str, str] = {
     "SECRET_KEY": "change-me-to-a-random-string",
 }
@@ -57,6 +57,11 @@ _DEFAULTS: dict[str, Any] = {
     "SENSOR_GYRO_RANGE_DPS": 500,
     "SENSOR_FILTER_HZ": 42,
     "SENSOR_CHART_WINDOW_S": 30,
+    # Trigger source configuration
+    "SENSOR_TRIGGER_SOURCES": "accel",        # "accel", "gyro", or "both"
+    "SENSOR_TRIGGER_COMBINE_MODE": "or",      # "or" or "and" (only when TRIGGER_SOURCES == "both")
+    "SENSOR_GYRO_THRESHOLD": 10.0,            # RMS gyro threshold in dps
+    "SENSOR_GYRO_RMS_WINDOW_S": 1.0,          # Separate RMS window for gyro (seconds)
     # LLM generation parameters
     "LLM_MAX_TOKENS": 256,
     "LLM_TEMPERATURE": 0.7,
@@ -74,7 +79,8 @@ _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_T
 _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
              "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE"}
-_FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S"}
+_FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S",
+               "SENSOR_GYRO_THRESHOLD", "SENSOR_GYRO_RMS_WINDOW_S"}
 
 # Human-readable descriptions displayed as help text in the admin dashboard
 _DESCRIPTIONS: dict[str, str] = {
@@ -82,9 +88,9 @@ _DESCRIPTIONS: dict[str, str] = {
     "SENSOR_DEVICE_ID": "PicoQuake USB device identifier (last 4 hex chars of serial number)",
     "SENSOR_SAMPLE_RATE_HZ": "Number of sensor readings per second (higher = more detail, more CPU)",
     "SENSOR_DURATION_S": "How many seconds of data to capture per brew event",
-    "SENSOR_VIBRATION_THRESHOLD": "Minimum RMS acceleration (g) to detect a brew event for auto-trigger",
-    "SENSOR_RMS_WINDOW_S": "Sliding window length in seconds used to compute the RMS value",
-    "SENSOR_CHART_WINDOW_S": "Width of the live chart's rolling time window in seconds",
+    "SENSOR_VIBRATION_THRESHOLD": "Accel RMS threshold (g) for auto-trigger when using accelerometer source",
+    "SENSOR_RMS_WINDOW_S": "Sliding window length in seconds used to compute the accel RMS value",
+    "SENSOR_CHART_WINDOW_S": "Width of the live chart\u2019s rolling time window in seconds",
     "SENSOR_ACC_ENABLED": "Enable accelerometer channels (X, Y, Z) on the sensor",
     "SENSOR_GYRO_ENABLED": "Enable gyroscope channels (X, Y, Z) on the sensor",
     "SENSOR_NEUTRALIZE_GRAVITY": "Subtract 1 g from the Z-axis to remove the gravity component",
@@ -94,6 +100,11 @@ _DESCRIPTIONS: dict[str, str] = {
     "SENSOR_MODE": "'mock' replays CSV files, 'picoquake' reads the USB sensor, 'serial' reads raw serial",
     "SENSOR_SERIAL_PORT": "Serial port path for serial mode (e.g. /dev/ttyUSB0 or COM3)",
     "SENSOR_AUTO_TRIGGER": "Automatically start a brew when vibration exceeds the threshold",
+    # Trigger source configuration
+    "SENSOR_TRIGGER_SOURCES": "Which signal triggers auto-capture: 'accel', 'gyro', or 'both'",
+    "SENSOR_TRIGGER_COMBINE_MODE": "When both sources active: 'or' = either triggers, 'and' = both must exceed thresholds",
+    "SENSOR_GYRO_THRESHOLD": "Gyro RMS threshold (dps) for auto-trigger when using gyroscope source",
+    "SENSOR_GYRO_RMS_WINDOW_S": "Sliding window length in seconds used to compute the gyro RMS value",
     # Classifier
     "CLASSIFIER_ENABLED": "Enable the ML classifier service for coffee-type detection",
     "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",
@@ -147,11 +158,11 @@ class ConfigManager:
         self._env_file = env_file
         self.load()
 
-    # ── Loading ────────────────────────────────────────────────────
+    #  Loading 
 
     def load(self) -> None:
         with self._lock:
-            # Layer 0 – env-only secrets (from .env / environment, never persisted)
+            # Layer 0  env-only secrets (from .env / environment, never persisted)
             if self._env_file:
                 load_dotenv(self._env_file, override=False)
             else:
@@ -161,16 +172,16 @@ class ConfigManager:
             for key, default in _ENV_ONLY.items():
                 self._data[key] = os.environ.get(key, default)
 
-            # Layer 1 – defaults
+            # Layer 1  defaults
             self._data.update(_DEFAULTS)
 
-            # Layer 2 – .env overrides for app config keys
+            # Layer 2  .env overrides for app config keys
             for key in _DEFAULTS:
                 env_val = os.environ.get(key)
                 if env_val is not None:
                     self._data[key] = _cast(key, env_val)
 
-            # Layer 3 – persisted settings.json
+            # Layer 3  persisted settings.json
             if SETTINGS_PATH.exists():
                 try:
                     with open(SETTINGS_PATH, "r") as f:
@@ -179,7 +190,7 @@ class ConfigManager:
                         if key in _DEFAULTS or key in _PERSISTED_SECRETS:
                             self._data[key] = _cast(key, value)
                 except (json.JSONDecodeError, OSError):
-                    pass  # Corrupted file – fall back to env/defaults
+                    pass  # Corrupted file  fall back to env/defaults
 
             # Bootstrap admin password: if no hash exists yet, hash the
             # ADMIN_PASSWORD env var (or default "1234") and persist it.
@@ -190,14 +201,14 @@ class ConfigManager:
                 ).decode()
                 self._save_unlocked()
 
-    # ── Persistence ────────────────────────────────────────────────
+    #  Persistence 
 
     def save(self) -> None:
         with self._lock:
             self._save_unlocked()
 
     def _save_unlocked(self) -> None:
-        """Internal save – caller must already hold self._lock."""
+        """Internal save  caller must already hold self._lock."""
         persistable = {
             k: v for k, v in self._data.items()
             if k in _DEFAULTS or k in _PERSISTED_SECRETS
@@ -206,7 +217,7 @@ class ConfigManager:
         with open(SETTINGS_PATH, "w") as f:
             json.dump(persistable, f, indent=2)
 
-    # ── Password management ───────────────────────────────────
+    #  Password management 
 
     def verify_password(self, plain_password: str) -> bool:
         """Check a plaintext password against the stored bcrypt hash."""
@@ -222,7 +233,7 @@ class ConfigManager:
             self._data["ADMIN_PASSWORD_HASH"] = hashed
         self.save()
 
-    # ── Accessors ──────────────────────────────────────────────────
+    #  Accessors 
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._lock:
@@ -257,5 +268,5 @@ class ConfigManager:
         raise AttributeError(f"No config key {name!r}")
 
 
-# Singleton instance – imported by the rest of the app
+# Singleton instance  imported by the rest of the app
 config = ConfigManager()
