@@ -1135,66 +1135,8 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     </form>
 </div>
 
-<!-- Settings -->
-<div class="card" id="password-card">
-    <h3>Change Password</h3>
-    <form method="post" action="/admin/password" autocomplete="off" id="pw-form">
-        <label for="current_password">Current Password
-            <input type="password" id="current_password" name="current_password" required
-                   inputmode="none" readonly onclick="activatePwField(this)"
-                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;cursor:pointer;">
-        </label>
-        <label for="new_password">New Password
-            <input type="password" id="new_password" name="new_password" required minlength="4"
-                   inputmode="none" readonly onclick="activatePwField(this)"
-                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;cursor:pointer;">
-        </label>
-        <div class="pw-numpad" id="pw-numpad">
-            <button type="button" onclick="pwNumPress('1')">1</button>
-            <button type="button" onclick="pwNumPress('2')">2</button>
-            <button type="button" onclick="pwNumPress('3')">3</button>
-            <button type="button" onclick="pwNumPress('4')">4</button>
-            <button type="button" onclick="pwNumPress('5')">5</button>
-            <button type="button" onclick="pwNumPress('6')">6</button>
-            <button type="button" onclick="pwNumPress('7')">7</button>
-            <button type="button" onclick="pwNumPress('8')">8</button>
-            <button type="button" onclick="pwNumPress('9')">9</button>
-            <button type="button" class="btn-clear" onclick="pwNumClear()">Clear</button>
-            <button type="button" onclick="pwNumPress('0')">0</button>
-            <button type="button" class="btn-back" onclick="pwNumBack()">&#9003;</button>
-        </div>
-        <button type="submit">Change Password</button>
-    </form>
-</div>
-<script>
-var _activePwField = null;
-var _pwNumpad = document.getElementById('pw-numpad');
-function activatePwField(el) {
-    document.querySelectorAll('#current_password,#new_password').forEach(function(f){ f.style.outline=''; });
-    el.style.outline = '2px solid var(--pico-primary)';
-    _activePwField = el;
-    // Move numpad after the clicked field's label and show it
-    el.parentNode.after(_pwNumpad);
-    _pwNumpad.classList.add('visible');
-}
-function pwNumPress(d) {
-    if (!_activePwField) return;
-    _activePwField.value += d;
-}
-function pwNumClear() { if (_activePwField) _activePwField.value = ''; }
-function pwNumBack() { if (_activePwField) _activePwField.value = _activePwField.value.slice(0, -1); }
-// Dismiss numpad when clicking outside the password form
-document.addEventListener('click', function(e) {
-    var form = document.getElementById('pw-form');
-    if (form && !form.contains(e.target)) {
-        _pwNumpad.classList.remove('visible');
-        if (_activePwField) { _activePwField.style.outline = ''; _activePwField = null; }
-    }
-});
-</script>
-
 <div class="card" id="configuration-card">
-    <h3>Configuration</h3>
+    <h3>Pipeline Configuration</h3>
     <form method="post" action="/admin/settings">
 
         <fieldset>
@@ -1427,5 +1369,63 @@ document.addEventListener('click', function(e) {
     modeSel.addEventListener('change', toggleSensorFields);
     toggleSensorFields();
 })();
+</script>
+
+<!-- Change Password -->
+<div class="card" id="password-card">
+    <h3>Change Password</h3>
+    <form method="post" action="/admin/password" autocomplete="off" id="pw-form">
+        <label for="current_password">Current Password
+            <input type="password" id="current_password" name="current_password" required
+                   inputmode="none" readonly onclick="activatePwField(this)"
+                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;cursor:pointer;">
+        </label>
+        <label for="new_password">New Password
+            <input type="password" id="new_password" name="new_password" required minlength="4"
+                   inputmode="none" readonly onclick="activatePwField(this)"
+                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;cursor:pointer;">
+        </label>
+        <div class="pw-numpad" id="pw-numpad">
+            <button type="button" onclick="pwNumPress('1')">1</button>
+            <button type="button" onclick="pwNumPress('2')">2</button>
+            <button type="button" onclick="pwNumPress('3')">3</button>
+            <button type="button" onclick="pwNumPress('4')">4</button>
+            <button type="button" onclick="pwNumPress('5')">5</button>
+            <button type="button" onclick="pwNumPress('6')">6</button>
+            <button type="button" onclick="pwNumPress('7')">7</button>
+            <button type="button" onclick="pwNumPress('8')">8</button>
+            <button type="button" onclick="pwNumPress('9')">9</button>
+            <button type="button" class="btn-clear" onclick="pwNumClear()">Clear</button>
+            <button type="button" onclick="pwNumPress('0')">0</button>
+            <button type="button" class="btn-back" onclick="pwNumBack()">&#9003;</button>
+        </div>
+        <button type="submit">Change Password</button>
+    </form>
+</div>
+<script>
+var _activePwField = null;
+var _pwNumpad = document.getElementById('pw-numpad');
+function activatePwField(el) {
+    document.querySelectorAll('#current_password,#new_password').forEach(function(f){ f.style.outline=''; });
+    el.style.outline = '2px solid var(--pico-primary)';
+    _activePwField = el;
+    // Move numpad after the clicked field's label and show it
+    el.parentNode.after(_pwNumpad);
+    _pwNumpad.classList.add('visible');
+}
+function pwNumPress(d) {
+    if (!_activePwField) return;
+    _activePwField.value += d;
+}
+function pwNumClear() { if (_activePwField) _activePwField.value = ''; }
+function pwNumBack() { if (_activePwField) _activePwField.value = _activePwField.value.slice(0, -1); }
+// Dismiss numpad when clicking outside the password form
+document.addEventListener('click', function(e) {
+    var form = document.getElementById('pw-form');
+    if (form && !form.contains(e.target)) {
+        _pwNumpad.classList.remove('visible');
+        if (_activePwField) { _activePwField.style.outline = ''; _activePwField = null; }
+    }
+});
 </script>
 {% endblock %}
