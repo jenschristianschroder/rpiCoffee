@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Request, Response
@@ -42,6 +43,7 @@ def _get_signer() -> URLSafeSerializer:
 
 
 def _verify_session(session: str | None) -> bool:
+    """Check session token is valid (any age)."""
     if not session:
         return False
     try:
@@ -49,6 +51,25 @@ def _verify_session(session: str | None) -> bool:
         return data.get("authenticated") is True
     except BadSignature:
         return False
+
+
+def _verify_session_fresh(session: str | None, max_age: float = 10.0) -> bool:
+    """Check session token is valid AND was issued within *max_age* seconds."""
+    if not session:
+        return False
+    try:
+        data = _get_signer().loads(session)
+        if data.get("authenticated") is not True:
+            return False
+        ts = data.get("ts", 0)
+        return (time.time() - ts) < max_age
+    except BadSignature:
+        return False
+
+
+def _make_session_token() -> str:
+    """Create a fresh session token with a timestamp."""
+    return _get_signer().dumps({"authenticated": True, "ts": time.time()})
 
 
 # ── Login ────────────────────────────────────────────────────────
@@ -62,8 +83,8 @@ async def login_page(request: Request, error: str = ""):
 async def login_submit(request: Request, password: str = Form(...)):
     if config.verify_password(password):
         response = RedirectResponse(url="/admin/", status_code=303)
-        token = _get_signer().dumps({"authenticated": True})
-        response.set_cookie(key="session", value=token, httponly=True, samesite="lax")
+        response.set_cookie(key="session", value=_make_session_token(),
+                            httponly=True, samesite="lax", max_age=600)
         logger.info("Admin login successful")
         return response
     logger.warning("Admin login failed – wrong password")
@@ -81,7 +102,7 @@ async def logout():
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: str | None = Cookie(default=None)):
-    if not _verify_session(session):
+    if not _verify_session_fresh(session):
         return RedirectResponse(url="/admin/login", status_code=303)
 
     cfg = config.to_dict()
@@ -140,7 +161,15 @@ async def update_settings(request: Request, session: str | None = Cookie(default
         except Exception:
             logger.exception("Failed to restart sensor after settings change")
 
-    return RedirectResponse(url="/admin/?message=Settings+saved", status_code=303)
+    return _redirect_with_fresh_session("/admin/?message=Settings+saved")
+
+
+def _redirect_with_fresh_session(url: str) -> RedirectResponse:
+    """Redirect and set a fresh session cookie so the dashboard accepts the request."""
+    response = RedirectResponse(url=url, status_code=303)
+    response.set_cookie(key="session", value=_make_session_token(),
+                        httponly=True, samesite="lax", max_age=600)
+    return response
 
 
 # ── Sensor config (JSON API) ────────────────────────────────────
@@ -190,11 +219,11 @@ async def change_password(
         return RedirectResponse(url="/admin/login", status_code=303)
 
     if not config.verify_password(current_password):
-        return RedirectResponse(url="/admin/?message=Current+password+is+incorrect", status_code=303)
+        return _redirect_with_fresh_session("/admin/?message=Current+password+is+incorrect")
 
     if len(new_password) < 4:
-        return RedirectResponse(url="/admin/?message=Password+must+be+at+least+4+characters", status_code=303)
+        return _redirect_with_fresh_session("/admin/?message=Password+must+be+at+least+4+characters")
 
     config.set_password(new_password)
     logger.info("Admin password changed")
-    return RedirectResponse(url="/admin/?message=Password+changed", status_code=303)
+    return _redirect_with_fresh_session("/admin/?message=Password+changed")
