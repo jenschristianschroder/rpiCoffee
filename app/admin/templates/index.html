@@ -56,11 +56,13 @@
             display: flex; flex-direction: row;
             gap: 0.6rem;
             flex-shrink: 0;
+            height: 160px;
         }
         .left-col {
             display: flex; flex-direction: column;
             width: 300px; flex-shrink: 0;
             gap: 0.4rem;
+            overflow: hidden;
         }
         .right-col {
             flex: 1;
@@ -89,9 +91,11 @@
         .brew-btn:active { transform: scale(0.96); }
         .brew-btn:disabled { opacity: 0.5; }
         .brew-status {
-            margin-top: 0.3rem;
             font-size: 0.9rem;
             color: var(--pico-muted-color);
+            text-align: center;
+            padding: 0.2rem 0.6rem;
+            min-height: 1.4em;
         }
 
         /* ── Result card ────────────────────────────── */
@@ -100,8 +104,7 @@
             border: 1px solid var(--pico-muted-border-color);
             border-radius: 12px;
             padding: 0.8rem 1rem;
-            flex: 1;
-            min-height: 0;
+            height: 100%;
             overflow-y: auto;
         }
         .result-card .label-badge {
@@ -197,15 +200,12 @@
     <div class="left-col">
       <div class="brew-section">
           <button class="brew-btn" id="brew-btn" onclick="brew()">&#9749; Brew!</button>
-          <div class="brew-status" id="brew-status"></div>
       </div>
     </div>
 
     <div class="right-col">
       <div class="result-card" id="result-card">
-          <div class="result-placeholder" id="result-placeholder">
-              Press <strong>Brew</strong> to start the pipeline
-          </div>
+          <div class="brew-status" id="brew-status"></div>
           <div id="result-content" style="display:none;"></div>
       </div>
     </div>
@@ -373,13 +373,11 @@ function brew() {
     const btn = document.getElementById('brew-btn');
     const statusEl = document.getElementById('brew-status');
     const resultContent = document.getElementById('result-content');
-    const resultPlaceholder = document.getElementById('result-placeholder');
     const chartCanvas = document.getElementById('sensor-chart');
     const chartPlaceholder = document.getElementById('chart-placeholder');
 
     btn.disabled = true;
-    statusEl.textContent = 'Collecting sensor data…';
-    resultPlaceholder.style.display = 'none';
+    statusEl.textContent = 'Collecting sensor data\u2026';
     resultContent.style.display = 'none';
     resultContent.innerHTML = '';
 
@@ -436,6 +434,8 @@ function brew() {
         if (data.steps_skipped.length) meta += ' \u00b7 Skipped: ' + data.steps_skipped.join(', ');
         meta += ' \u00b7 ' + data.sensor_samples + ' samples</p>';
         if (data.error) meta = '<p class="error-note">' + data.error + '</p>' + meta;
+        // Filter out 'unavailable' error notes
+        meta = meta.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');
         resultContent.insertAdjacentHTML('beforeend', meta);
         statusEl.textContent = '';
         btn.disabled = false;
@@ -465,14 +465,13 @@ function showResult(data) {
     }
     if (data.error) {
         html += '<p class="error-note">' + data.error + '</p>';
-    }
-    html += '<p class="meta">Steps: ' + (data.steps_completed.join(' → ') || 'none');
+    }    // Filter out 'unavailable' error notes before rendering
+    html = html.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');    html += '<p class="meta">Steps: ' + (data.steps_completed.join(' → ') || 'none');
     if (data.steps_skipped.length) html += ' · Skipped: ' + data.steps_skipped.join(', ');
     html += ' · ' + data.sensor_samples + ' samples</p>';
 
     el.innerHTML = html;
     el.style.display = '';
-    document.getElementById('result-placeholder').style.display = 'none';
 }
 
 // ── Auto-trigger SSE listener ─────────────────────────────────
@@ -492,6 +491,11 @@ function showResult(data) {
 
         // Only prepare chart when a NEW recording starts (not "Recording complete")
         if (typeof msg === 'string' && msg.indexOf('Recording sensor data') !== -1) {
+            // Clear previous results when a new recording starts
+            var rc = document.getElementById('result-content');
+            rc.innerHTML = '';
+            rc.style.display = 'none';
+
             const chartCanvas = document.getElementById('sensor-chart');
             const chartPlaceholder = document.getElementById('chart-placeholder');
             chartPlaceholder.style.display = 'none';
