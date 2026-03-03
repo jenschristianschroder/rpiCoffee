@@ -7,7 +7,9 @@ if ! ls /data/*.csv 1>/dev/null 2>&1; then
     cp /data/csv-defaults/*.csv /data/ 2>/dev/null || true
 fi
 
-# Ensure audio directory exists
+# Ensure required directories exist
 mkdir -p /data/audio
+mkdir -p /data/training
+mkdir -p /data/models
 
 exec uvicorn main:app --host 0.0.0.0 --port "${APP_PORT:-8080}" --workers 1

@@ -71,11 +71,15 @@ _DEFAULTS: dict[str, Any] = {
     # Remote save
     "REMOTE_SAVE_ENABLED": True,
     "REMOTE_SAVE_ENDPOINT": "http://remote-save:7000",
+    # Data collection
+    "DATA_COLLECT_ENABLED": False,
+    "DATA_COLLECT_LABEL": "",
+    "DATA_COLLECT_LABELS": "black,espresso,cappuccino",
 }
 
 _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_TRIGGER",
               "SENSOR_ACC_ENABLED", "SENSOR_GYRO_ENABLED", "SENSOR_NEUTRALIZE_GRAVITY",
-              "LLM_TTS", "REMOTE_SAVE_ENABLED"}
+              "LLM_TTS", "REMOTE_SAVE_ENABLED", "DATA_COLLECT_ENABLED"}
 _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
              "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE"}
@@ -125,6 +129,10 @@ _DESCRIPTIONS: dict[str, str] = {
     # Remote Save
     "REMOTE_SAVE_ENABLED": "Enable uploading brew data to a remote server for storage",
     "REMOTE_SAVE_ENDPOINT": "URL of the remote-save service",
+    # Data Collection
+    "DATA_COLLECT_ENABLED": "Enable data collection mode (records vibration data instead of running the brew pipeline)",
+    "DATA_COLLECT_LABEL": "Coffee type label to assign to collected data (e.g. black, espresso, cappuccino)",
+    "DATA_COLLECT_LABELS": "Comma-separated list of available coffee type labels for data collection",
 }
 
 SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", str(_LOCAL_DATA_DIR))) / "settings.json"

@@ -8,6 +8,12 @@ services:
     container_name: rpicoffee-classifier
     ports:
       - "${CLASSIFIER_PORT:-8001}:${CLASSIFIER_PORT:-8001}"
+    volumes:
+      - ./data:/data
+    environment:
+      - MODEL_DIR=/data/models
+      - TRAINING_DIR=/data/training
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.6}
     networks:
       - coffee-net
     restart: unless-stopped

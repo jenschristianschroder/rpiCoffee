@@ -596,6 +596,418 @@ document.addEventListener('DOMContentLoaded', function() {
     <div id="brew-result"></div>
 </div>
 
+<!-- ── Data Collection ────────────────────────────────────────── -->
+<div class="card" id="data-collection-card">
+    <h3>&#128202; Data Collection</h3>
+    <p>Record vibration data and label it for ML training. Select the coffee type, then start collecting. Each auto-trigger or brew event will save the sensor data instead of running the full pipeline.</p>
+
+    <div id="collect-status-banner" style="display:none;padding:0.5rem 1rem;border-radius:8px;margin-bottom:0.75rem;font-weight:600;text-align:center;"></div>
+
+    <div class="grid" style="align-items:end;">
+        <label for="collect-label-select">Coffee Type
+            <select id="collect-label-select">
+                {% for lbl in config.get('DATA_COLLECT_LABELS', 'black,espresso,cappuccino').split(',') %}
+                <option value="{{ lbl.strip() }}" {% if config.get('DATA_COLLECT_LABEL', '') == lbl.strip() %}selected{% endif %}>{{ lbl.strip()|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <div>
+            <button id="collect-toggle-btn" onclick="toggleCollection()" style="margin-bottom:1.2rem;">
+                {% if config.get('DATA_COLLECT_ENABLED', false) %}⏹ Stop Collecting{% else %}⏺ Start Collecting{% endif %}
+            </button>
+        </div>
+    </div>
+
+    <!-- Manage Labels -->
+    <details>
+        <summary style="cursor:pointer;font-size:0.9rem;color:var(--pico-muted-color);">Manage Labels</summary>
+        <div style="margin-top:0.5rem;">
+            <div id="label-list" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;">
+                {% for lbl in config.get('DATA_COLLECT_LABELS', 'black,espresso,cappuccino').split(',') %}
+                <span class="label-tag" style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.6rem;border-radius:1rem;background:var(--pico-card-background-color);border:1px solid var(--pico-muted-border-color);font-size:0.85rem;">
+                    {{ lbl.strip() }}
+                    <span onclick="removeLabel('{{ lbl.strip() }}')" style="cursor:pointer;color:var(--pico-del-color);font-weight:bold;">&times;</span>
+                </span>
+                {% endfor %}
+            </div>
+            <div style="display:flex;gap:0.4rem;">
+                <input type="text" id="new-label-input" placeholder="New label…" style="margin:0;flex:1;">
+                <button onclick="addLabel()" style="margin:0;white-space:nowrap;">+ Add</button>
+            </div>
+        </div>
+    </details>
+</div>
+
+<script>
+// ── Data Collection logic ──────────────────────────────────
+var _collecting = {{ config.get('DATA_COLLECT_ENABLED', false)|tojson }};
+
+function updateCollectUI() {
+    var btn = document.getElementById('collect-toggle-btn');
+    var banner = document.getElementById('collect-status-banner');
+    var sel = document.getElementById('collect-label-select');
+    if (_collecting) {
+        btn.innerHTML = '⏹ Stop Collecting';
+        btn.style.background = 'var(--pico-del-color)';
+        banner.style.display = '';
+        banner.style.background = 'rgba(239,68,68,0.15)';
+        banner.style.color = 'var(--pico-del-color)';
+        banner.textContent = '⏺ COLLECTING: ' + sel.value;
+        sel.disabled = true;
+    } else {
+        btn.innerHTML = '⏺ Start Collecting';
+        btn.style.background = '';
+        banner.style.display = 'none';
+        sel.disabled = false;
+    }
+}
+updateCollectUI();
+
+async function toggleCollection() {
+    var btn = document.getElementById('collect-toggle-btn');
+    btn.setAttribute('aria-busy', 'true');
+    try {
+        if (_collecting) {
+            await fetch('/api/collect/stop', { method: 'POST' });
+            _collecting = false;
+        } else {
+            var label = document.getElementById('collect-label-select').value;
+            await fetch('/api/collect/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label: label })
+            });
+            _collecting = true;
+        }
+    } catch(e) { console.error('Collection toggle failed', e); }
+    btn.removeAttribute('aria-busy');
+    updateCollectUI();
+}
+
+function getLabels() {
+    var sel = document.getElementById('collect-label-select');
+    return Array.from(sel.options).map(function(o) { return o.value; });
+}
+
+function saveLabels(labels) {
+    // Update the select dropdown
+    var sel = document.getElementById('collect-label-select');
+    var current = sel.value;
+    sel.innerHTML = '';
+    labels.forEach(function(l) {
+        var opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = l.charAt(0).toUpperCase() + l.slice(1);
+        if (l === current) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    // Update label tag list
+    var listEl = document.getElementById('label-list');
+    listEl.innerHTML = labels.map(function(l) {
+        return '<span class="label-tag" style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.2rem 0.6rem;border-radius:1rem;background:var(--pico-card-background-color);border:1px solid var(--pico-muted-border-color);font-size:0.85rem;">' +
+            l + ' <span onclick="removeLabel(\'' + l + '\')" style="cursor:pointer;color:var(--pico-del-color);font-weight:bold;">&times;</span></span>';
+    }).join('');
+    // Persist to config
+    fetch('/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'DATA_COLLECT_LABELS=' + encodeURIComponent(labels.join(','))
+    });
+}
+
+function addLabel() {
+    var input = document.getElementById('new-label-input');
+    var label = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!label) return;
+    var labels = getLabels();
+    if (labels.indexOf(label) !== -1) { input.value = ''; return; }
+    labels.push(label);
+    saveLabels(labels);
+    input.value = '';
+}
+
+function removeLabel(label) {
+    var labels = getLabels().filter(function(l) { return l !== label; });
+    if (labels.length === 0) return; // must have at least one
+    saveLabels(labels);
+}
+</script>
+
+<!-- ── Training Data Manager ──────────────────────────────────── -->
+<div class="card" id="training-data-card">
+    <h3>&#128193; Training Data Manager</h3>
+    <div id="training-data-loading" style="text-align:center;padding:1rem;">
+        <span aria-busy="true">Loading training data…</span>
+    </div>
+    <div id="training-data-content" style="display:none;">
+
+        <!-- Sample Files -->
+        <h4 style="margin-bottom:0.3rem;">Sample Files <small style="color:var(--pico-muted-color);">(/data/*.csv.sample)</small></h4>
+        <div id="sample-files-list"></div>
+
+        <!-- Collected Training Data -->
+        <h4 style="margin-top:1rem;margin-bottom:0.3rem;">Collected Training Data <small style="color:var(--pico-muted-color);">(/data/training/)</small></h4>
+        <div id="training-files-list"></div>
+
+        <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
+            <button onclick="refreshTrainingData()" style="font-size:0.85rem;padding:0.3rem 0.8rem;">&#8635; Refresh</button>
+            <button onclick="deleteAllTraining()" style="font-size:0.85rem;padding:0.3rem 0.8rem;background:var(--pico-del-color);">🗑 Delete All Training Data</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Training Data Manager logic ────────────────────────────
+async function refreshTrainingData() {
+    document.getElementById('training-data-loading').style.display = '';
+    document.getElementById('training-data-content').style.display = 'none';
+    try {
+        var [samplesRes, trainingRes] = await Promise.all([
+            fetch('/api/data-files'),
+            fetch('/api/training-data')
+        ]);
+        var samples = (await samplesRes.json()).files || [];
+        var trainingData = (await trainingRes.json()).training_data || {};
+
+        // Render sample files
+        var sHtml = '';
+        if (samples.length === 0) {
+            sHtml = '<p style="color:var(--pico-muted-color);font-size:0.85rem;">No sample files found.</p>';
+        } else {
+            sHtml = '<table role="grid" style="font-size:0.85rem;"><thead><tr><th>File</th><th>Label</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+            samples.forEach(function(f) {
+                var sizeKb = (f.size_bytes / 1024).toFixed(1);
+                sHtml += '<tr><td>' + f.filename + '</td><td><mark>' + f.label + '</mark></td><td>' + sizeKb + ' KB</td>';
+                sHtml += '<td><button onclick="deleteSampleFile(\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">🗑</button></td></tr>';
+            });
+            sHtml += '</tbody></table>';
+        }
+        document.getElementById('sample-files-list').innerHTML = sHtml;
+
+        // Render training files
+        var tHtml = '';
+        var labels = Object.keys(trainingData);
+        if (labels.length === 0) {
+            tHtml = '<p style="color:var(--pico-muted-color);font-size:0.85rem;">No training data collected yet. Enable data collection above to start recording.</p>';
+        } else {
+            tHtml = '<table role="grid" style="font-size:0.85rem;"><thead><tr><th>Label</th><th>File</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+            labels.forEach(function(label) {
+                trainingData[label].forEach(function(f) {
+                    var sizeKb = (f.size_bytes / 1024).toFixed(1);
+                    tHtml += '<tr><td><mark>' + label + '</mark></td><td>' + f.filename + '</td><td>' + sizeKb + ' KB</td>';
+                    tHtml += '<td style="white-space:nowrap;">';
+                    tHtml += '<button onclick="promoteTraining(\'' + label + '\',\'' + f.filename + '\')" title="Promote to sample" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-right:0.2rem;">⬆</button>';
+                    tHtml += '<button onclick="deleteTrainingFile(\'' + label + '\',\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">🗑</button>';
+                    tHtml += '</td></tr>';
+                });
+            });
+            tHtml += '</tbody></table>';
+            // Summary
+            tHtml += '<p style="font-size:0.85rem;color:var(--pico-muted-color);">Total: ';
+            labels.forEach(function(label, i) {
+                if (i > 0) tHtml += ', ';
+                tHtml += '<strong>' + label + '</strong>: ' + trainingData[label].length + ' recordings';
+            });
+            tHtml += '</p>';
+        }
+        document.getElementById('training-files-list').innerHTML = tHtml;
+
+    } catch(e) {
+        console.error('Failed to load training data', e);
+        document.getElementById('training-files-list').innerHTML = '<p style="color:var(--pico-del-color);">Failed to load training data.</p>';
+    }
+    document.getElementById('training-data-loading').style.display = 'none';
+    document.getElementById('training-data-content').style.display = '';
+}
+
+async function deleteSampleFile(filename) {
+    if (!confirm('Delete sample file "' + filename + '"?')) return;
+    await fetch('/api/data-files/' + encodeURIComponent(filename), { method: 'DELETE' });
+    refreshTrainingData();
+}
+
+async function deleteTrainingFile(label, filename) {
+    if (!confirm('Delete training file "' + label + '/' + filename + '"?')) return;
+    await fetch('/api/training-data/' + encodeURIComponent(label) + '/' + encodeURIComponent(filename), { method: 'DELETE' });
+    refreshTrainingData();
+}
+
+async function deleteAllTraining() {
+    if (!confirm('Delete ALL training data? This cannot be undone.')) return;
+    await fetch('/api/training-data', { method: 'DELETE' });
+    refreshTrainingData();
+}
+
+async function promoteTraining(label, filename) {
+    var res = await fetch('/api/data-files/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label, filename: filename })
+    });
+    var data = await res.json();
+    if (data.error) { alert('Error: ' + data.error); return; }
+    alert('Promoted to sample: ' + data.filename);
+    refreshTrainingData();
+}
+
+// Load training data on page load
+document.addEventListener('DOMContentLoaded', refreshTrainingData);
+</script>
+
+<!-- ── Model Training ────────────────────────────────────────── -->
+<div class="card" id="model-training-card">
+    <h3>&#129504; Model Training</h3>
+
+    <!-- Current model info -->
+    <div id="model-info" style="margin-bottom:0.75rem;">
+        <span aria-busy="true">Loading model info…</span>
+    </div>
+
+    <div class="grid" style="align-items:end;">
+        <div>
+            <button id="train-btn" onclick="trainModel()" style="margin-bottom:0;">&#9881; Train Model</button>
+            <small style="display:block;margin-top:0.3rem;color:var(--pico-muted-color);">Train on collected training data</small>
+        </div>
+        <div>
+            <label for="model-upload" style="margin-bottom:0;">Upload Model (.joblib)
+                <input type="file" id="model-upload" accept=".joblib" onchange="uploadModel()">
+            </label>
+        </div>
+    </div>
+
+    <!-- Training progress -->
+    <div id="train-progress" style="display:none;margin-top:0.75rem;padding:0.75rem;border-radius:8px;background:var(--pico-card-background-color);border:1px solid var(--pico-muted-border-color);">
+        <p id="train-progress-text" aria-busy="true" style="margin:0;"></p>
+    </div>
+
+    <!-- Training results -->
+    <div id="train-results" style="display:none;margin-top:0.75rem;"></div>
+</div>
+
+<script>
+// ── Model Training logic ───────────────────────────────────
+async function loadModelInfo() {
+    var el = document.getElementById('model-info');
+    try {
+        var r = await fetch('/api/model/info');
+        var data = await r.json();
+        if (data.error) {
+            el.innerHTML = '<p style="color:var(--pico-muted-color);">⚠ Classifier service unreachable. Make sure it is running.</p>';
+            return;
+        }
+        if (!data.loaded) {
+            el.innerHTML = '<p style="color:var(--pico-muted-color);">No model loaded. Train a model or upload one to get started.</p>';
+            return;
+        }
+        var html = '<div style="font-size:0.9rem;">';
+        html += '<strong>Model:</strong> ' + data.model_name + ' &nbsp;|&nbsp; ';
+        html += '<strong>Classes:</strong> ' + data.classes.join(', ') + ' &nbsp;|&nbsp; ';
+        html += '<strong>Features:</strong> ' + data.feature_count + ' &nbsp;|&nbsp; ';
+        html += '<strong>Trained:</strong> ' + (data.trained_at || 'unknown');
+        html += '</div>';
+        el.innerHTML = html;
+    } catch(e) {
+        el.innerHTML = '<p style="color:var(--pico-del-color);">Failed to load model info.</p>';
+    }
+}
+
+var _trainPollInterval = null;
+
+async function trainModel() {
+    var btn = document.getElementById('train-btn');
+    var progress = document.getElementById('train-progress');
+    var progressText = document.getElementById('train-progress-text');
+    var results = document.getElementById('train-results');
+
+    btn.setAttribute('aria-busy', 'true');
+    btn.disabled = true;
+    progress.style.display = '';
+    results.style.display = 'none';
+    progressText.textContent = 'Starting training…';
+
+    try {
+        var r = await fetch('/api/train', { method: 'POST' });
+        var data = await r.json();
+        if (data.error) {
+            progressText.textContent = 'Error: ' + data.error;
+            progressText.removeAttribute('aria-busy');
+            btn.removeAttribute('aria-busy');
+            btn.disabled = false;
+            return;
+        }
+
+        // Poll training status
+        _trainPollInterval = setInterval(async function() {
+            try {
+                var sr = await fetch('/api/train/status');
+                var status = await sr.json();
+                progressText.textContent = status.progress || 'Training…';
+
+                if (!status.is_training) {
+                    clearInterval(_trainPollInterval);
+                    progressText.removeAttribute('aria-busy');
+                    btn.removeAttribute('aria-busy');
+                    btn.disabled = false;
+
+                    if (status.error) {
+                        results.innerHTML = '<p style="color:var(--pico-del-color);"><strong>Training failed:</strong> ' + status.error + '</p>';
+                        results.style.display = '';
+                    } else {
+                        var rHtml = '<h4>Training Results</h4>';
+                        if (status.accuracy !== null) rHtml += '<p><strong>Training accuracy:</strong> ' + (status.accuracy * 100).toFixed(1) + '%</p>';
+                        if (status.cv_accuracy !== null) rHtml += '<p><strong>Cross-validation accuracy:</strong> ' + (status.cv_accuracy * 100).toFixed(1) + '% ± ' + (status.cv_std * 100).toFixed(1) + '%</p>';
+                        if (status.classes && status.classes.length) rHtml += '<p><strong>Classes:</strong> ' + status.classes.join(', ') + '</p>';
+                        if (status.samples_per_class) {
+                            rHtml += '<p><strong>Samples per class:</strong> ';
+                            Object.entries(status.samples_per_class).forEach(function(e, i) {
+                                if (i > 0) rHtml += ', ';
+                                rHtml += e[0] + ': ' + e[1];
+                            });
+                            rHtml += '</p>';
+                        }
+                        if (status.class_report) rHtml += '<details><summary>Classification Report</summary><pre style="font-size:0.75rem;">' + status.class_report + '</pre></details>';
+                        results.innerHTML = rHtml;
+                        results.style.display = '';
+                        progress.style.display = 'none';
+                    }
+                    loadModelInfo();
+                }
+            } catch(e) { /* keep polling */ }
+        }, 1500);
+
+    } catch(e) {
+        progressText.textContent = 'Request failed: ' + e.message;
+        progressText.removeAttribute('aria-busy');
+        btn.removeAttribute('aria-busy');
+        btn.disabled = false;
+    }
+}
+
+async function uploadModel() {
+    var fileInput = document.getElementById('model-upload');
+    if (!fileInput.files.length) return;
+
+    var formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        var r = await fetch('/api/upload-model', { method: 'POST', body: formData });
+        var data = await r.json();
+        if (data.error) {
+            alert('Upload failed: ' + data.error);
+        } else {
+            alert('Model uploaded: ' + (data.model_name || 'OK') + ' — Classes: ' + (data.classes || []).join(', '));
+            loadModelInfo();
+        }
+    } catch(e) {
+        alert('Upload failed: ' + e.message);
+    }
+    fileInput.value = '';
+}
+
+document.addEventListener('DOMContentLoaded', loadModelInfo);
+</script>
+
 <!-- Live Sensor Testing -->
 <div class="card">
     <div class="live-header">

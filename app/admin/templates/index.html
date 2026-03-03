@@ -192,6 +192,12 @@
     </div>
 </div>
 
+{% if config.get('DATA_COLLECT_ENABLED') %}
+<div id="collect-banner" style="background:var(--pico-primary-background);color:#fff;text-align:center;padding:0.5rem 1rem;font-weight:600;font-size:1.1rem;letter-spacing:0.05em;">
+  &#128203; COLLECTING: {{ config.get('DATA_COLLECT_LABEL', '?') }}
+</div>
+{% endif %}
+
 <div class="kiosk-body">
 
   <!-- Top row: brew (left) + result (right) -->
@@ -426,6 +432,17 @@ function brew() {
         resultContent.insertAdjacentHTML('beforeend', '<audio controls autoplay src="' + d.audio_url + '"></audio>');
     });
 
+    es.addEventListener('data_collected', function(e) {
+        es.close();
+        clearAllBlinks();
+        const d = JSON.parse(e.data);
+        statusEl.textContent = '';
+        resultContent.innerHTML = '<span class="label-badge" style="background:#22c55e;">' + d.label + '</span> '
+            + '<p class="meta">Data saved &middot; ' + d.samples + ' samples</p>';
+        resultContent.style.display = '';
+        btn.disabled = false;
+    });
+
     es.addEventListener('result', function(e) {
         es.close();
         clearAllBlinks();
@@ -527,6 +544,20 @@ function showResult(data) {
             _kioskKeys.forEach(function(k, di) { sensorChart.data.datasets[di].data.push({ x: t, y: _applyGravity(k, s[k]) }); });
         }
         sensorChart.update('none');
+    });
+
+    es.addEventListener('data_collected', function(e) {
+        const d = JSON.parse(e.data);
+        clearAllBlinks();
+        const statusEl = document.getElementById('brew-status');
+        statusEl.textContent = '';
+        statusEl.style.display = 'none';
+        statusEl.removeAttribute('aria-busy');
+        const rc = document.getElementById('result-content');
+        rc.innerHTML = '<span class="label-badge" style="background:#22c55e;">' + d.label + '</span> '
+            + '<p class="meta">Data saved &middot; ' + d.samples + ' samples</p>';
+        rc.style.display = '';
+        document.getElementById('brew-btn').disabled = false;
     });
 
     es.addEventListener('result', function(e) {
