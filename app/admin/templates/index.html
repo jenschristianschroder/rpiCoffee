@@ -92,6 +92,9 @@
             margin-top: 0.3rem;
             font-size: 0.9rem;
             color: var(--pico-muted-color);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
         }
 
         /* ── Result card ────────────────────────────── */
@@ -436,6 +439,8 @@ function brew() {
         if (data.steps_skipped.length) meta += ' \u00b7 Skipped: ' + data.steps_skipped.join(', ');
         meta += ' \u00b7 ' + data.sensor_samples + ' samples</p>';
         if (data.error) meta = '<p class="error-note">' + data.error + '</p>' + meta;
+        // Filter out 'unavailable' error notes
+        meta = meta.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');
         resultContent.insertAdjacentHTML('beforeend', meta);
         statusEl.textContent = '';
         btn.disabled = false;
@@ -465,8 +470,8 @@ function showResult(data) {
     }
     if (data.error) {
         html += '<p class="error-note">' + data.error + '</p>';
-    }
-    html += '<p class="meta">Steps: ' + (data.steps_completed.join(' → ') || 'none');
+    }    // Filter out 'unavailable' error notes before rendering
+    html = html.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');    html += '<p class="meta">Steps: ' + (data.steps_completed.join(' → ') || 'none');
     if (data.steps_skipped.length) html += ' · Skipped: ' + data.steps_skipped.join(', ');
     html += ' · ' + data.sensor_samples + ' samples</p>';
 
@@ -492,6 +497,12 @@ function showResult(data) {
 
         // Only prepare chart when a NEW recording starts (not "Recording complete")
         if (typeof msg === 'string' && msg.indexOf('Recording sensor data') !== -1) {
+            // Clear previous results when a new recording starts
+            var rc = document.getElementById('result-content');
+            rc.innerHTML = '';
+            rc.style.display = 'none';
+            document.getElementById('result-placeholder').style.display = '';
+
             const chartCanvas = document.getElementById('sensor-chart');
             const chartPlaceholder = document.getElementById('chart-placeholder');
             chartPlaceholder.style.display = 'none';
