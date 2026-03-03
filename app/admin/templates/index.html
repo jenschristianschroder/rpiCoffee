@@ -199,7 +199,7 @@
 
     <div class="left-col">
       <div class="brew-section">
-          <button class="brew-btn" id="brew-btn" onclick="brew()">&#9749; Brew!</button>
+          <button class="brew-btn" id="brew-btn" onclick="brew()">&#129514; Test</button>
       </div>
     </div>
 
@@ -331,7 +331,7 @@ function createSensorChart() {
                 decimation: { enabled: true, algorithm: 'lttb', samples: 500 }
             },
             scales: {
-                x: { type: 'linear', min: 0, max: 30,
+                x: { type: 'linear', min: 0, max: {{ config['SENSOR_CHART_WINDOW_S']|tojson }},
                      title: { display: true, text: 'Time (s)', font: { size: 12 } },
                      ticks: { stepSize: 5, font: { size: 11 } } },
                 y: { title: { display: true, text: 'Value', font: { size: 12 } },
@@ -344,6 +344,7 @@ function createSensorChart() {
 // ── Pipeline stage → dot blinking ─────────────────────────────
 const _stageMap = [
     { pattern: 'Collecting sensor data', dot: 's-sensor' },
+    { pattern: 'Replaying test data',    dot: 's-sensor' },
     { pattern: 'Recording sensor data',  dot: 's-sensor' },
     { pattern: 'Running pipeline',       dot: 's-classifier' },
     { pattern: 'Classifying',            dot: 's-classifier' },
@@ -377,7 +378,7 @@ function brew() {
     const chartPlaceholder = document.getElementById('chart-placeholder');
 
     btn.disabled = true;
-    statusEl.textContent = 'Collecting sensor data\u2026';
+    statusEl.textContent = 'Replaying test data\u2026';
     resultContent.style.display = 'none';
     resultContent.innerHTML = '';
 
@@ -390,7 +391,7 @@ function brew() {
 
     let sampleIdx = 0;
 
-    const es = new EventSource('/api/brew/stream');
+    const es = new EventSource('/api/test/stream');
 
     es.addEventListener('sensor', function(e) {
         const batch = JSON.parse(e.data);

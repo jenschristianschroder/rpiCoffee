@@ -139,7 +139,7 @@ class MockSensor:
 
     def _start_windows(self, on_done: Callable[[], None] | None = None) -> str:
         """Windows: load CSV data into memory buffer."""
-        csv_files = list(DATA_DIR.glob("*.csv"))
+        csv_files = list(DATA_DIR.glob("*.csv")) + list(DATA_DIR.glob("*.csv.sample"))
         if not csv_files:
             logger.error("No CSV files found in %s", DATA_DIR)
             self._slave_path = "__mock__"
@@ -184,7 +184,7 @@ class MockSensor:
     async def _replay(self, on_done: Callable[[], None] | None = None) -> None:
         """Replay a randomly chosen CSV file through the PTY master fd."""
         try:
-            csv_files = list(DATA_DIR.glob("*.csv"))
+            csv_files = list(DATA_DIR.glob("*.csv")) + list(DATA_DIR.glob("*.csv.sample"))
             if not csv_files:
                 logger.error("No CSV files found in %s", DATA_DIR)
                 return

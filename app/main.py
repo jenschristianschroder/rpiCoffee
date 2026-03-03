@@ -365,6 +365,19 @@ async def brew_stream():
     )
 
 
+@app.get("/api/test/stream")
+async def test_stream():
+    """Stream a test run: replay a random CSV file through the full pipeline (no save)."""
+    return StreamingResponse(
+        run_pipeline_streaming(force_mock=True, skip_save=True),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.get("/api/auto-trigger/stream")
 async def auto_trigger_stream():
     """SSE stream for auto-triggered brew results (kiosk listens here)."""
