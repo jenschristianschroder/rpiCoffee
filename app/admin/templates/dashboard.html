@@ -509,9 +509,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (id) sessionStorage.setItem('card-' + id, card.classList.contains('collapsed') ? '1' : '0');
         });
     });
-    // Restore collapsed state from sessionStorage
+    // Restore collapsed state from sessionStorage (default: collapsed except service-status & live-sensor)
+    var _defaultOpen = ['service-status-card', 'live-sensor-card'];
     document.querySelectorAll('.card[id]').forEach(function(card) {
-        if (sessionStorage.getItem('card-' + card.id) === '1') card.classList.add('collapsed');
+        var stored = sessionStorage.getItem('card-' + card.id);
+        if (stored === '1') card.classList.add('collapsed');
+        else if (stored === '0') card.classList.remove('collapsed');
+        else if (_defaultOpen.indexOf(card.id) === -1) card.classList.add('collapsed');
     });
 });
 </script>
