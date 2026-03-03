@@ -158,13 +158,16 @@
             font-size: 1rem;
         }
 
-        /* ── Admin link ─────────────────────────────── */
-        .admin-link {
-            text-align: center;
-            padding: 0.2rem;
-            font-size: 0.75rem;
+        /* ── Admin gear icon (topbar) ───────────────── */
+        .topbar-settings {
+            font-size: 1.3rem;
+            color: rgba(255,255,255,0.6);
+            text-decoration: none;
+            margin-left: 0.6rem;
+            line-height: 1;
+            transition: color 0.2s;
         }
-        .admin-link a { color: var(--pico-muted-color); text-decoration: none; }
+        .topbar-settings:hover { color: #fff; }
     </style>
 </head>
 <body>
@@ -180,6 +183,7 @@
         <div class="status-item"><span class="dot gray" id="s-remote_save"></span>save</div>
     </div>
     <span class="clock" id="clock"></span>
+    <a href="/admin/" class="topbar-settings" title="Admin Settings">&#9881;</a>
 </div>
 
 <div class="kiosk-body">
@@ -192,7 +196,6 @@
           <button class="brew-btn" id="brew-btn" onclick="brew()">&#9749; Brew!</button>
           <div class="brew-status" id="brew-status"></div>
       </div>
-      <div class="admin-link"><a href="/admin/">Admin Settings</a></div>
     </div>
 
     <div class="right-col">
