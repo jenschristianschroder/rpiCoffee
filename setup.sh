@@ -148,8 +148,16 @@ PKGS=(
     git curl wget
     build-essential cmake
     libgomp1 libportaudio2
-    chromium-browser
 )
+
+# Chromium: skip if already installed (Trixie ships it), else detect package name
+if command -v chromium &>/dev/null || command -v chromium-browser &>/dev/null; then
+    info "Chromium already installed — skipping"
+elif apt-cache show chromium-browser &>/dev/null 2>&1; then
+    PKGS+=(chromium-browser)
+else
+    PKGS+=(chromium)
+fi
 
 info "Installing: ${PKGS[*]}"
 if sudo apt-get update -qq >> "$LOG_FILE" 2>&1 && \
@@ -559,7 +567,14 @@ while ! curl -sf --max-time 2 "$APP_URL" > /dev/null 2>&1; do
 done
 echo "[kiosk] App is ready – launching Chromium"
 
-DISPLAY=:0 chromium-browser \
+# Use whichever chromium binary is available (Trixie: chromium, older: chromium-browser)
+CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null)
+if [[ -z "$CHROMIUM_BIN" ]]; then
+    echo "[kiosk] ERROR: No chromium binary found" >&2
+    exit 1
+fi
+
+DISPLAY=:0 $CHROMIUM_BIN \
   --app="$APP_URL" \
   --start-maximized \
   --password-store=basic \
