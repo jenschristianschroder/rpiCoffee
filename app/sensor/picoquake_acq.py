@@ -402,13 +402,43 @@ def main_acquisition():
                 # ── Auto-trigger logic ───────────────────────────────
                 flag = ring.recording_flag
 
-                if flag == 0 and len(recent_accel) >= rms_window_size:
-                    # Check AC-coupled RMS (vibration only, gravity removed)
-                    mean_mag = sum(recent_accel) / len(recent_accel)
-                    rms = (sum((a - mean_mag) ** 2 for a in recent_accel) / len(recent_accel)) ** 0.5
-                    if rms > args.threshold:
-                        logger.info("Vibration detected! RMS=%.2fg > threshold=%.1fg → recording %ds",
-                                    rms, args.threshold, args.duration)
+                if flag == 0:
+                    accel_triggered = False
+                    gyro_triggered = False
+                    accel_rms = 0.0
+                    gyro_rms = 0.0
+
+                    # Accel RMS check
+                    if use_accel and len(recent_accel) >= rms_window_size:
+                        mean_mag = sum(recent_accel) / len(recent_accel)
+                        accel_rms = (sum((a - mean_mag) ** 2 for a in recent_accel) / len(recent_accel)) ** 0.5
+                        accel_triggered = accel_rms > args.threshold
+
+                    # Gyro RMS check
+                    if use_gyro and len(recent_gyro) >= gyro_rms_window_size:
+                        mean_mag_g = sum(recent_gyro) / len(recent_gyro)
+                        gyro_rms = (sum((g - mean_mag_g) ** 2 for g in recent_gyro) / len(recent_gyro)) ** 0.5
+                        gyro_triggered = gyro_rms > args.gyro_threshold
+
+                    # Combine trigger decision
+                    if args.trigger_sources == "accel":
+                        should_trigger = accel_triggered
+                    elif args.trigger_sources == "gyro":
+                        should_trigger = gyro_triggered
+                    else:  # both
+                        if args.trigger_combine_mode == "and":
+                            should_trigger = accel_triggered and gyro_triggered
+                        else:  # or
+                            should_trigger = accel_triggered or gyro_triggered
+
+                    if should_trigger:
+                        parts = []
+                        if accel_triggered:
+                            parts.append("accel_rms=%.3fg>%.1fg" % (accel_rms, args.threshold))
+                        if gyro_triggered:
+                            parts.append("gyro_rms=%.1fdps>%.1fdps" % (gyro_rms, args.gyro_threshold))
+                        logger.info("Trigger detected! %s → recording %ds",
+                                    ", ".join(parts), args.duration)
                         ring.recording_start_idx = ring.write_idx
                         ring.recording_samples = record_samples
                         ring.recording_flag = 1
