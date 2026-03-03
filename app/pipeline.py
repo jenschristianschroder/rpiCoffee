@@ -185,9 +185,20 @@ def _sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {payload}\n\n"
 
 
-async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
+async def run_pipeline_streaming(
+    force_mock: bool = False,
+    skip_save: bool = False,
+) -> AsyncGenerator[str, None]:
     """
     Run the brew pipeline and yield SSE events.
+
+    Parameters
+    ----------
+    force_mock : bool
+        When True, always use mock sensor (replay CSV) regardless of
+        config.SENSOR_MODE.  Used by the Test button.
+    skip_save : bool
+        When True, skip the remote-save step.
 
     Events emitted:
         sensor   – batch of sensor data points (many times)
@@ -208,12 +219,12 @@ async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
     now = datetime.now().astimezone()
 
     # ── Step 0: Stream sensor data ───────────────────────────────
-    yield _sse("status", {"message": "Collecting sensor data…"})
+    yield _sse("status", {"message": "Replaying test data…" if force_mock else "Collecting sensor data…"})
 
     all_sensor_data: list[dict[str, float]] = []
     try:
         port = None
-        if config.SENSOR_MODE == "mock":
+        if force_mock or config.SENSOR_MODE == "mock":
             port = mock_sensor.start()
             logger.info("Using mock sensor on %s", port)
 
@@ -291,14 +302,18 @@ async def run_pipeline_streaming() -> AsyncGenerator[str, None]:
             result["steps_completed"].append("tts")
             yield _sse("audio", {"audio_url": result["audio_url"]})
 
-    # ── Step 4: Save results via remote save (always attempted) ──
-    yield _sse("status", {"message": "Saving results…"})
-    save_ok = await RemoteSaveClient.save(result, all_sensor_data)
-    if save_ok:
-        result["steps_completed"].append("remote-save")
-    else:
+    # ── Step 4: Save results via remote save (unless skipped) ────
+    if skip_save:
         result["steps_skipped"].append("remote-save")
-        logger.warning("Remote save skipped or failed – brew result still returned")
+        logger.info("Remote save skipped (test mode)")
+    else:
+        yield _sse("status", {"message": "Saving results…"})
+        save_ok = await RemoteSaveClient.save(result, all_sensor_data)
+        if save_ok:
+            result["steps_completed"].append("remote-save")
+        else:
+            result["steps_skipped"].append("remote-save")
+            logger.warning("Remote save skipped or failed – brew result still returned")
 
     logger.info("Pipeline complete: %s → %s", result["label"], result["audio_url"])
     yield _sse("result", result)
