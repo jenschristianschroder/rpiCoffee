@@ -90,12 +90,11 @@
         .brew-btn:active { transform: scale(0.96); }
         .brew-btn:disabled { opacity: 0.5; }
         .brew-status {
-            margin-top: 0.3rem;
             font-size: 0.9rem;
             color: var(--pico-muted-color);
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            max-width: 100%;
+            text-align: center;
+            padding: 0.2rem 0.6rem;
+            min-height: 1.4em;
         }
 
         /* ── Result card ────────────────────────────── */
@@ -201,7 +200,6 @@
     <div class="left-col">
       <div class="brew-section">
           <button class="brew-btn" id="brew-btn" onclick="brew()">&#9749; Brew!</button>
-          <div class="brew-status" id="brew-status"></div>
       </div>
     </div>
 
@@ -215,6 +213,9 @@
     </div>
 
   </div>
+
+  <!-- Status bar (full width) -->
+  <div class="brew-status" id="brew-status"></div>
 
   <!-- Bottom row: full-width chart -->
   <div class="bottom-row">
