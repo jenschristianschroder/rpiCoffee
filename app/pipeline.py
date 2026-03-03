@@ -29,6 +29,7 @@ from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
 from services.tts_client import TTSClient
 from services.remote_save_client import RemoteSaveClient
+from services.training_data import save_recording
 
 logger = logging.getLogger("rpicoffee.pipeline")
 
@@ -112,6 +113,23 @@ async def run_pipeline(
         logger.exception("Sensor read failed")
         result["error"] = f"Sensor read failed: {exc}"
         return result
+
+    # ── Data Collection Mode ──────────────────────────────────────
+    if config.DATA_COLLECT_ENABLED and config.DATA_COLLECT_LABEL:
+        try:
+            filepath = save_recording(config.DATA_COLLECT_LABEL, raw_sensor_data)
+            result["label"] = config.DATA_COLLECT_LABEL
+            result["steps_completed"].append("data_collected")
+            result["data_collected"] = True
+            result["data_file"] = filepath
+            result["steps_skipped"].extend(["classifier", "llm", "tts", "remote-save"])
+            logger.info("Data collection: saved %d samples as '%s' → %s",
+                        len(raw_sensor_data), config.DATA_COLLECT_LABEL, filepath)
+            return result
+        except Exception as exc:
+            logger.exception("Data collection save failed")
+            result["error"] = f"Data collection save failed: {exc}"
+            return result
 
     # ── Step 1: Classify via classifier ───────────────────────────
     if on_progress:
@@ -247,6 +265,30 @@ async def run_pipeline_streaming(
         result["error"] = f"Sensor read failed: {exc}"
         yield _sse("result", result)
         return
+
+    # ── Data Collection Mode ──────────────────────────────────────
+    if config.DATA_COLLECT_ENABLED and config.DATA_COLLECT_LABEL:
+        try:
+            filepath = save_recording(config.DATA_COLLECT_LABEL, all_sensor_data)
+            result["label"] = config.DATA_COLLECT_LABEL
+            result["steps_completed"].append("data_collected")
+            result["data_collected"] = True
+            result["data_file"] = filepath
+            result["steps_skipped"].extend(["classifier", "llm", "tts", "remote-save"])
+            logger.info("Data collection: saved %d samples as '%s' → %s",
+                        len(all_sensor_data), config.DATA_COLLECT_LABEL, filepath)
+            yield _sse("data_collected", {
+                "label": config.DATA_COLLECT_LABEL,
+                "samples": len(all_sensor_data),
+                "file": filepath,
+            })
+            yield _sse("result", result)
+            return
+        except Exception as exc:
+            logger.exception("Data collection save failed")
+            result["error"] = f"Data collection save failed: {exc}"
+            yield _sse("result", result)
+            return
 
     # ── Step 1: Classify via classifier ───────────────────────────
     yield _sse("status", {"message": "Classifying coffee type…"})

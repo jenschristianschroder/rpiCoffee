@@ -23,6 +23,7 @@ from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
 from services.tts_client import TTSClient
 from services.remote_save_client import RemoteSaveClient
+from services import training_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 logger = logging.getLogger("rpicoffee")
@@ -477,3 +478,138 @@ async def services_status():
         statuses["sensor"] = {"enabled": True, "healthy": True, "mode": "serial"}
 
     return statuses
+
+
+# ── Data Collection API ──────────────────────────────────────────
+
+@app.post("/api/collect/start")
+async def collect_start(request: Request):
+    """Enable data collection mode with a specific label."""
+    body = await request.json()
+    label = body.get("label", "").strip()
+    if not label:
+        return {"error": "Label is required"}
+
+    config.update_many({
+        "DATA_COLLECT_ENABLED": True,
+        "DATA_COLLECT_LABEL": label,
+    })
+    logger.info("Data collection started for label: %s", label)
+    return {"status": "collecting", "label": label}
+
+
+@app.post("/api/collect/stop")
+async def collect_stop():
+    """Disable data collection mode."""
+    config.update_many({
+        "DATA_COLLECT_ENABLED": False,
+        "DATA_COLLECT_LABEL": "",
+    })
+    logger.info("Data collection stopped")
+    return {"status": "stopped"}
+
+
+# ── Training Data Management API ─────────────────────────────────
+
+@app.get("/api/training-data")
+async def api_list_training_data():
+    """List all training CSV files grouped by label."""
+    return {"training_data": training_data.list_training_data()}
+
+
+@app.delete("/api/training-data/{label}/{filename}")
+async def api_delete_training_file(label: str, filename: str):
+    """Delete a specific training CSV file."""
+    ok = training_data.delete_training_file(label, filename)
+    if ok:
+        return {"status": "deleted", "label": label, "filename": filename}
+    return {"error": "File not found"}
+
+
+@app.delete("/api/training-data/{label}")
+async def api_delete_training_label(label: str):
+    """Delete all training data for a specific label."""
+    count = training_data.delete_all_training_data(label=label)
+    return {"status": "deleted", "label": label, "count": count}
+
+
+@app.delete("/api/training-data")
+async def api_delete_all_training():
+    """Delete all training data."""
+    count = training_data.delete_all_training_data()
+    return {"status": "deleted", "count": count}
+
+
+# ── Sample File Management API ───────────────────────────────────
+
+@app.get("/api/data-files")
+async def api_list_data_files():
+    """List sample CSV files in /data/."""
+    return {"files": training_data.list_sample_files()}
+
+
+@app.delete("/api/data-files/{filename}")
+async def api_delete_data_file(filename: str):
+    """Delete a sample CSV file from /data/."""
+    ok = training_data.delete_sample_file(filename)
+    if ok:
+        return {"status": "deleted", "filename": filename}
+    return {"error": "File not found or not a .csv.sample file"}
+
+
+@app.post("/api/data-files/promote")
+async def api_promote_to_sample(request: Request):
+    """Promote a training CSV to a sample file in /data/."""
+    body = await request.json()
+    label = body.get("label", "")
+    filename = body.get("filename", "")
+    if not label or not filename:
+        return {"error": "label and filename are required"}
+
+    new_name = training_data.promote_training_to_sample(label, filename)
+    if new_name:
+        return {"status": "promoted", "filename": new_name}
+    return {"error": "Source file not found"}
+
+
+# ── Model Training API (proxied to classifier service) ───────────
+
+@app.post("/api/train")
+async def api_train(request: Request):
+    """Trigger model training on the classifier service."""
+    result = await ClassifierClient.train()
+    if result:
+        return result
+    return {"error": "Failed to start training — classifier service unreachable"}
+
+
+@app.get("/api/train/status")
+async def api_train_status():
+    """Get training progress from the classifier service."""
+    result = await ClassifierClient.train_status()
+    if result:
+        return result
+    return {"error": "Failed to get training status — classifier service unreachable"}
+
+
+@app.post("/api/upload-model")
+async def api_upload_model(request: Request):
+    """Upload a .joblib model file to the classifier service."""
+    form = await request.form()
+    file = form.get("file")
+    if not file:
+        return {"error": "No file uploaded"}
+
+    result = await ClassifierClient.upload_model(file)
+    if result:
+        return result
+    return {"error": "Failed to upload model — classifier service unreachable"}
+
+
+@app.get("/api/model/info")
+async def api_model_info():
+    """Get model info from the classifier service."""
+    result = await ClassifierClient.model_info()
+    if result:
+        return result
+    return {"error": "Classifier service unreachable"}
