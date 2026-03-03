@@ -43,6 +43,16 @@
     .pw-numpad button:active { background: var(--pico-primary-background); }
     .pw-numpad .btn-clear { font-size: 0.95rem; }
     .pw-numpad .btn-back { font-size: 1.1rem; }
+    /* Collapsible cards */
+    .card > h3,
+    .card > .live-header > h3 { cursor: pointer; user-select: none; }
+    .card > h3::after,
+    .card > .live-header > h3::after { content: ' ▾'; font-size: 0.7em; color: var(--pico-muted-color); }
+    .card.collapsed > h3::after,
+    .card.collapsed > .live-header > h3::after { content: ' ▸'; }
+    .card.collapsed > *:not(h3):not(.live-header),
+    .card.collapsed > .live-header ~ * { display: none !important; }
+    .card.collapsed > .card-body { display: none !important; }
 </style>
 <script>
 async function checkServices() {
@@ -102,65 +112,6 @@ async function restartSensor() {
     } catch (e) {
         if (errEl) { errEl.textContent = 'Restart failed: ' + e.message; }
     }
-}
-
-// ── Brew pipeline ──────────────────────────────────────────
-async function brew() {
-    const btn = document.getElementById('brew-btn');
-    const result = document.getElementById('brew-result');
-    btn.setAttribute('aria-busy', 'true');
-    btn.disabled = true;
-    result.innerHTML = '';
-    result.className = 'pipeline-result';
-
-    const statusEl = document.getElementById('brew-status');
-    statusEl.textContent = 'Collecting sensor data…';
-    statusEl.style.display = '';
-
-    const es = new EventSource('/api/brew/stream');
-
-    es.addEventListener('status', function(e) {
-        statusEl.textContent = JSON.parse(e.data).message;
-    });
-
-    es.addEventListener('classify', function(e) {
-        const d = JSON.parse(e.data);
-        result.insertAdjacentHTML('beforeend', '<p><strong>Classification:</strong> ' + d.label + ' (' + (d.confidence * 100).toFixed(1) + '%)</p>');
-    });
-
-    es.addEventListener('text', function(e) {
-        const d = JSON.parse(e.data);
-        result.insertAdjacentHTML('beforeend', '<p><strong>Generated text:</strong> ' + d.text + '</p>');
-    });
-
-    es.addEventListener('audio', function(e) {
-        const d = JSON.parse(e.data);
-        result.insertAdjacentHTML('beforeend', '<p><strong>Audio:</strong></p><audio controls autoplay src="' + d.audio_url + '"></audio>');
-    });
-
-    es.addEventListener('result', function(e) {
-        es.close();
-        statusEl.style.display = 'none';
-        const data = JSON.parse(e.data);
-        let meta = '<h4>Pipeline Result</h4>';
-        meta += '<p><strong>Steps completed:</strong> ' + (data.steps_completed.join(' → ') || 'none') + '</p>';
-        if (data.steps_skipped.length) meta += '<p><strong>Steps skipped:</strong> ' + data.steps_skipped.join(', ') + '</p>';
-        if (data.error) meta += '<p style="color:var(--pico-del-color);"><strong>Note:</strong> ' + data.error + '</p>';
-        meta += '<p><small>Sensor samples: ' + data.sensor_samples + '</small></p>';
-        result.insertAdjacentHTML('afterbegin', meta);
-        result.className = data.error ? 'pipeline-result error' : 'pipeline-result';
-        btn.removeAttribute('aria-busy');
-        btn.disabled = false;
-    });
-
-    es.onerror = function() {
-        es.close();
-        statusEl.style.display = 'none';
-        result.innerHTML = '<p style="color:var(--pico-del-color);">Pipeline stream disconnected</p>';
-        result.className = 'pipeline-result error';
-        btn.removeAttribute('aria-busy');
-        btn.disabled = false;
-    };
 }
 
 // ── Live sensor chart ──────────────────────────────────────
@@ -545,6 +496,23 @@ document.addEventListener('DOMContentLoaded', function() {
     createLiveChart();
     updateRmsLabel();
     connectStream();
+
+    // ── Collapsible cards ──────────────────────────────────────
+    document.querySelectorAll('.card > h3, .card > .live-header > h3').forEach(function(h3) {
+        h3.addEventListener('click', function(e) {
+            // Don't toggle if clicking a button/link inside the header row
+            if (e.target.closest('button, a')) return;
+            var card = h3.closest('.card');
+            card.classList.toggle('collapsed');
+            // Persist state in sessionStorage
+            var id = card.id || '';
+            if (id) sessionStorage.setItem('card-' + id, card.classList.contains('collapsed') ? '1' : '0');
+        });
+    });
+    // Restore collapsed state from sessionStorage
+    document.querySelectorAll('.card[id]').forEach(function(card) {
+        if (sessionStorage.getItem('card-' + card.id) === '1') card.classList.add('collapsed');
+    });
 });
 </script>
 {% endblock %}
@@ -557,7 +525,7 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endif %}
 
 <!-- Service Status -->
-<div class="card">
+<div class="card" id="service-status-card">
     <h3>Service Status</h3>
     <div class="grid">
         <div>
@@ -587,13 +555,48 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
-<!-- Brew -->
-<div class="card">
-    <h3>Brew Pipeline</h3>
-    <p>Sensor → Classify → Generate Text → Speak</p>
-    <button id="brew-btn" onclick="brew()">&#9749; Brew!</button>
-    <p id="brew-status" style="display:none;color:var(--pico-muted-color);margin-top:0.5rem;" aria-busy="true"></p>
-    <div id="brew-result"></div>
+<!-- Live Sensor Feed -->
+<div class="card" id="live-sensor-card">
+    <div class="live-header">
+        <h3>&#128225; Live Sensor Feed</h3>
+        <div class="live-controls">
+            <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
+            <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
+        </div>
+    </div>
+
+    <div class="card-body">
+    <!-- Stats: Max + RMS -->
+    <div class="stats-grid">
+        {% if config['SENSOR_ACC_ENABLED'] %}
+        <div class="stat-card c0"><div class="lbl">Acc X max</div><div class="val" id="max-acc_x">0.000</div></div>
+        <div class="stat-card c1"><div class="lbl">Acc Y max</div><div class="val" id="max-acc_y">0.000</div></div>
+        <div class="stat-card c2"><div class="lbl">Acc Z max</div><div class="val" id="max-acc_z">0.000</div></div>
+        {% endif %}
+        {% if config['SENSOR_GYRO_ENABLED'] %}
+        <div class="stat-card c3"><div class="lbl">Gyro X max</div><div class="val" id="max-gyro_x">0.000</div></div>
+        <div class="stat-card c4"><div class="lbl">Gyro Y max</div><div class="val" id="max-gyro_y">0.000</div></div>
+        <div class="stat-card c5"><div class="lbl">Gyro Z max</div><div class="val" id="max-gyro_z">0.000</div></div>
+        {% endif %}
+        {% if config['SENSOR_ACC_ENABLED'] %}
+        <div class="stat-card"><div class="lbl" id="accel-rms-lbl">Accel RMS</div><div class="val rms" id="accel-rms" style="color:#22c55e;">0.0000</div></div>
+        {% endif %}
+        {% if config['SENSOR_GYRO_ENABLED'] %}
+        <div class="stat-card"><div class="lbl" id="gyro-rms-lbl">Gyro RMS</div><div class="val rms" id="gyro-rms" style="color:#22c55e;">0.00</div></div>
+        {% endif %}
+    </div>
+    <div style="text-align:center;margin-bottom:0.5rem;">
+        <small style="cursor:pointer;text-decoration:underline;color:var(--pico-muted-color);" onclick="resetMax()">↺ Reset max values</small>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-wrap">
+        <canvas id="live-chart"></canvas>
+    </div>
+    <div class="stream-meta">
+        <span id="sample-count">0</span> samples in window
+    </div>
+    </div>
 </div>
 
 <!-- ── Data Collection ────────────────────────────────────────── -->
@@ -1008,50 +1011,8 @@ async function uploadModel() {
 document.addEventListener('DOMContentLoaded', loadModelInfo);
 </script>
 
-<!-- Live Sensor Testing -->
-<div class="card">
-    <div class="live-header">
-        <h3>&#128225; Live Sensor Feed</h3>
-        <div class="live-controls">
-            <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
-            <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
-        </div>
-    </div>
-
-    <!-- Stats: Max + RMS -->
-    <div class="stats-grid">
-        {% if config['SENSOR_ACC_ENABLED'] %}
-        <div class="stat-card c0"><div class="lbl">Acc X max</div><div class="val" id="max-acc_x">0.000</div></div>
-        <div class="stat-card c1"><div class="lbl">Acc Y max</div><div class="val" id="max-acc_y">0.000</div></div>
-        <div class="stat-card c2"><div class="lbl">Acc Z max</div><div class="val" id="max-acc_z">0.000</div></div>
-        {% endif %}
-        {% if config['SENSOR_GYRO_ENABLED'] %}
-        <div class="stat-card c3"><div class="lbl">Gyro X max</div><div class="val" id="max-gyro_x">0.000</div></div>
-        <div class="stat-card c4"><div class="lbl">Gyro Y max</div><div class="val" id="max-gyro_y">0.000</div></div>
-        <div class="stat-card c5"><div class="lbl">Gyro Z max</div><div class="val" id="max-gyro_z">0.000</div></div>
-        {% endif %}
-        {% if config['SENSOR_ACC_ENABLED'] %}
-        <div class="stat-card"><div class="lbl" id="accel-rms-lbl">Accel RMS</div><div class="val rms" id="accel-rms" style="color:#22c55e;">0.0000</div></div>
-        {% endif %}
-        {% if config['SENSOR_GYRO_ENABLED'] %}
-        <div class="stat-card"><div class="lbl" id="gyro-rms-lbl">Gyro RMS</div><div class="val rms" id="gyro-rms" style="color:#22c55e;">0.00</div></div>
-        {% endif %}
-    </div>
-    <div style="text-align:center;margin-bottom:0.5rem;">
-        <small style="cursor:pointer;text-decoration:underline;color:var(--pico-muted-color);" onclick="resetMax()">↺ Reset max values</small>
-    </div>
-
-    <!-- Chart -->
-    <div class="chart-wrap">
-        <canvas id="live-chart"></canvas>
-    </div>
-    <div class="stream-meta">
-        <span id="sample-count">0</span> samples in window
-    </div>
-</div>
-
 <!-- Sensor Configuration -->
-<div class="card">
+<div class="card" id="sensor-config-card">
     <h3>&#9881; Sensor Configuration</h3>
     <form id="sensor-config-form" onsubmit="saveSensorConfig(event)">
         <div class="grid">
@@ -1171,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 </div>
 
 <!-- Settings -->
-<div class="card">
+<div class="card" id="password-card">
     <h3>Change Password</h3>
     <form method="post" action="/admin/password" autocomplete="off" id="pw-form">
         <label for="current_password">Current Password
@@ -1228,7 +1189,7 @@ document.addEventListener('click', function(e) {
 });
 </script>
 
-<div class="card">
+<div class="card" id="configuration-card">
     <h3>Configuration</h3>
     <form method="post" action="/admin/settings">
 
