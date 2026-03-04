@@ -1571,6 +1571,8 @@ document.addEventListener('click', function(e) {
         return true;
     }
 
+    var vkbShowGuard = 0;   // timestamp-based guard against hide-after-show race
+
     window.vkbHide = function() {
         vkbContainer.classList.remove('visible');
         document.body.classList.remove('vkb-open');
@@ -1579,6 +1581,7 @@ document.addEventListener('click', function(e) {
 
     function vkbShow(el) {
         activeInput = el;
+        vkbShowGuard = Date.now();
         var layout = isNumericInput(el) ? numericLayout : fullLayout;
         initKeyboard(layout);
         keyboard.setInput(el.value || '');
@@ -1610,6 +1613,10 @@ document.addEventListener('click', function(e) {
 
     document.addEventListener('click', function(e) {
         if (!activeInput) return;
+        // Guard: body-padding shift can move the input away from the tap point,
+        // making the click land on a non-input element. Ignore dismiss clicks
+        // that arrive within 400ms of showing the keyboard.
+        if (Date.now() - vkbShowGuard < 400) return;
         if (vkbContainer.contains(e.target)) return;
         if (shouldShowKeyboard(e.target)) return;
         vkbHide();
