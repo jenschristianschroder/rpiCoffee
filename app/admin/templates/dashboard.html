@@ -71,6 +71,7 @@
     @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
 
     /* Collapsible cards */
+    .card { cursor: pointer; }
     .card > h3,
     .card > .live-header > h3 { cursor: pointer; user-select: none; }
     .card > h3::after,
@@ -80,6 +81,8 @@
     .card.collapsed > *:not(h3):not(.live-header),
     .card.collapsed > .live-header ~ * { display: none !important; }
     .card.collapsed > .card-body { display: none !important; }
+    /* Reset cursor on interactive children */
+    .card input, .card select, .card textarea, .card button, .card a, .card label { cursor: revert; }
 </style>
 <script>
 async function checkServices() {
@@ -525,13 +528,11 @@ document.addEventListener('DOMContentLoaded', function() {
     connectStream();
 
     // ── Collapsible cards ──────────────────────────────────────
-    document.querySelectorAll('.card > h3, .card > .live-header > h3').forEach(function(h3) {
-        h3.addEventListener('click', function(e) {
-            // Don't toggle if clicking a button/link inside the header row
-            if (e.target.closest('button, a')) return;
-            var card = h3.closest('.card');
+    document.querySelectorAll('.card[id]').forEach(function(card) {
+        card.addEventListener('click', function(e) {
+            // Only toggle when clicking the card padding, header, or h3 — not interactive children
+            if (e.target.closest('button, a, input, select, textarea, label, canvas, .stats-grid, .chart-wrap, form')) return;
             card.classList.toggle('collapsed');
-            // Persist state in sessionStorage
             var id = card.id || '';
             if (id) sessionStorage.setItem('card-' + id, card.classList.contains('collapsed') ? '1' : '0');
         });
@@ -589,7 +590,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- Live Sensor Feed -->
 <div class="card" id="live-sensor-card">
     <div class="live-header">
-        <h3>&#128225; Live Sensor Feed</h3>
+        <h3>&#9655; Live Sensor Feed</h3>
         <div class="live-controls">
             <span><span class="live-dot off" id="live-dot"></span><span id="live-label">Stopped</span></span>
             <button id="pause-btn" onclick="togglePause()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">▶ Start</button>
@@ -632,7 +633,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- ── Training Data Collection ───────────────────────────────── -->
 <div class="card" id="data-collection-card">
-    <h3>&#128202; Training Data Collection</h3>
+    <h3>&#9635; Training Data Collection</h3>
     <p>Record vibration data and label it for ML training. Select the coffee type, then start collecting. Each auto-trigger or brew event will save the sensor data instead of running the full pipeline.</p>
 
     <div id="collect-status-banner" style="display:none;padding:0.5rem 1rem;border-radius:8px;margin-bottom:0.75rem;font-weight:600;text-align:center;"></div>
@@ -769,7 +770,7 @@ function removeLabel(label) {
 
 <!-- ── Training Data Manager ──────────────────────────────────── -->
 <div class="card" id="training-data-card">
-    <h3>&#128193; Training Data Manager</h3>
+    <h3>&#9776; Training Data Manager</h3>
     <div id="training-data-loading" style="text-align:center;padding:1rem;">
         <span aria-busy="true">Loading training data…</span>
     </div>
@@ -785,7 +786,7 @@ function removeLabel(label) {
 
         <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
             <button onclick="refreshTrainingData()" style="font-size:0.85rem;padding:0.3rem 0.8rem;">&#8635; Refresh</button>
-            <button onclick="deleteAllTraining()" style="font-size:0.85rem;padding:0.3rem 0.8rem;background:var(--pico-del-color);">🗑 Delete All Training Data</button>
+            <button onclick="deleteAllTraining()" style="font-size:0.85rem;padding:0.3rem 0.8rem;background:var(--pico-del-color);">&#10007; Delete All Training Data</button>
         </div>
     </div>
 </div>
@@ -812,7 +813,7 @@ async function refreshTrainingData() {
             samples.forEach(function(f) {
                 var sizeKb = (f.size_bytes / 1024).toFixed(1);
                 sHtml += '<tr><td>' + f.filename + '</td><td><mark>' + f.label + '</mark></td><td>' + sizeKb + ' KB</td>';
-                sHtml += '<td><button onclick="deleteSampleFile(\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">🗑</button></td></tr>';
+                sHtml += '<td><button onclick="deleteSampleFile(\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">\u2717</button></td></tr>';
             });
             sHtml += '</tbody></table>';
         }
@@ -830,8 +831,8 @@ async function refreshTrainingData() {
                     var sizeKb = (f.size_bytes / 1024).toFixed(1);
                     tHtml += '<tr><td><mark>' + label + '</mark></td><td>' + f.filename + '</td><td>' + sizeKb + ' KB</td>';
                     tHtml += '<td style="white-space:nowrap;">';
-                    tHtml += '<button onclick="promoteTraining(\'' + label + '\',\'' + f.filename + '\')" title="Promote to sample" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-right:0.2rem;">⬆</button>';
-                    tHtml += '<button onclick="deleteTrainingFile(\'' + label + '\',\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">🗑</button>';
+                    tHtml += '<button onclick="promoteTraining(\'' + label + '\',\'' + f.filename + '\')" title="Promote to sample" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-right:0.2rem;">\u25B2</button>';
+                    tHtml += '<button onclick="deleteTrainingFile(\'' + label + '\',\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">\u2717</button>';
                     tHtml += '</td></tr>';
                 });
             });
@@ -890,7 +891,7 @@ document.addEventListener('DOMContentLoaded', refreshTrainingData);
 
 <!-- ── Model Training ────────────────────────────────────────── -->
 <div class="card" id="model-training-card">
-    <h3>&#129504; Model Training</h3>
+    <h3>&#10039; Model Training</h3>
 
     <!-- Current model info -->
     <div id="model-info" style="margin-bottom:0.75rem;">
@@ -1162,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
             </label>
         </div>
         <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem;">
-            <button type="submit" style="margin:0;">&#128190; Save &amp; Restart Sensor</button>
+            <button type="submit" style="margin:0;">&#10003; Save &amp; Restart Sensor</button>
             <span id="config-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>
         </div>
     </form>
@@ -1420,7 +1421,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 
 <!-- Change Password -->
 <div class="card" id="password-card">
-    <h3>&#128274; Change Password</h3>
+    <h3>&#9919; Change Password</h3>
     <form method="post" action="/admin/password" autocomplete="off" id="pw-form">
         <label for="current_password">Current Password
             <input type="password" id="current_password" name="current_password" required
