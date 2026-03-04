@@ -148,6 +148,7 @@ PKGS=(
     git curl wget
     build-essential cmake
     libgomp1 libportaudio2
+    alsa-utils
 )
 
 # Chromium: skip if already installed (Trixie ships it), else detect package name
@@ -681,6 +682,23 @@ if [ ! -S /tmp/.X11-unix/X0 ]; then
     exit 1
 fi
 
+# ── Wait for PipeWire audio socket ──
+_PW_SOCKET="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pipewire-0"
+_PW_MAX=30
+_PW_ELAPSED=0
+echo "[kiosk] Waiting for PipeWire socket at $_PW_SOCKET ..."
+while [ ! -S "$_PW_SOCKET" ]; do
+    sleep 2
+    _PW_ELAPSED=$((_PW_ELAPSED + 2))
+    if [ "$_PW_ELAPSED" -ge "$_PW_MAX" ]; then
+        echo "[kiosk] WARNING: PipeWire socket not found after ${_PW_MAX}s – audio may not work"
+        break
+    fi
+done
+if [ -S "$_PW_SOCKET" ]; then
+    echo "[kiosk] PipeWire socket ready"
+fi
+
 # ── Wait for the rpiCoffee web app to respond ──
 MAX_WAIT=120   # seconds
 ELAPSED=0
@@ -724,6 +742,7 @@ KIOSK
     chmod +x "${SCRIPT_DIR}/kiosk.sh"
     ok "Created kiosk launcher script (kiosk.sh)"
 
+    _USER_ID=$(id -u "${USER}")
     sudo tee /etc/systemd/system/rpicoffee-kiosk.service > /dev/null <<EOF
 [Unit]
 Description=rpiCoffee Chromium Kiosk
@@ -735,6 +754,8 @@ Type=simple
 WorkingDirectory=${SCRIPT_DIR}
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/${USER}/.Xauthority"
+Environment="XDG_RUNTIME_DIR=/run/user/${_USER_ID}"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${_USER_ID}/bus"
 ExecStartPre=/bin/sleep 5
 ExecStart=${SCRIPT_DIR}/kiosk.sh
 Restart=on-failure
