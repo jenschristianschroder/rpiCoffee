@@ -1584,11 +1584,22 @@ document.addEventListener('click', function(e) {
         keyboard.setInput(el.value || '');
         var label = el.closest('label');
         vkbFieldLabel.textContent = label ? label.childNodes[0].textContent.trim() : (el.placeholder || el.name || '');
+
+        // Show keyboard FIRST so body padding applies before scroll measurement
         vkbContainer.classList.add('visible');
         document.body.classList.add('vkb-open');
-        setTimeout(function() {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
+
+        // Wait for keyboard to render and layout to settle, then scroll if needed
+        requestAnimationFrame(function() {
+            setTimeout(function() {
+                var kbHeight = vkbContainer.offsetHeight || 260;
+                var rect = el.getBoundingClientRect();
+                var viewportH = window.innerHeight;
+                if (rect.bottom > viewportH - kbHeight - 20) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 50);
+        });
     }
 
     document.addEventListener('focusin', function(e) {
