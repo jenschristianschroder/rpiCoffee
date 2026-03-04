@@ -603,12 +603,12 @@ fi
 # ── Launch Chromium in the foreground (exec replaces this shell) ──
 export DISPLAY=:0
 exec $CHROMIUM_BIN \
-  --app="$APP_URL" \
-  --start-maximized \
+  --kiosk "$APP_URL" \
   --password-store=basic \
   --disable-infobars \
   --noerrdialogs \
-  --disable-session-crashed-bubble
+  --disable-session-crashed-bubble \
+  --check-for-update-interval=31536000
 KIOSK
     chmod +x "${SCRIPT_DIR}/kiosk.sh"
     ok "Created kiosk launcher script (kiosk.sh)"
