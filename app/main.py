@@ -222,6 +222,7 @@ def _start_sensor() -> None:
         trigger_combine_mode=cfg.get("SENSOR_TRIGGER_COMBINE_MODE", "or"),
         gyro_threshold=cfg.get("SENSOR_GYRO_THRESHOLD", 10.0),
         gyro_rms_window_s=cfg.get("SENSOR_GYRO_RMS_WINDOW_S", 1.0),
+        warmup_s=cfg.get("SENSOR_WARMUP_S", 5),
     )
     _sensor_started = True
 
