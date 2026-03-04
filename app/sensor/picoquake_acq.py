@@ -271,6 +271,8 @@ def main_acquisition():
                         help="Gyro RMS averaging window in seconds")
     parser.add_argument("--warmup", type=int, default=5,
                         help="Seconds after start to suppress auto-trigger (sensor stabilisation)")
+    parser.add_argument("--cooldown", type=int, default=10,
+                        help="Seconds to wait after a capture before allowing a new auto-trigger")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -324,11 +326,11 @@ def main_acquisition():
             acc_range=_ACC_RANGE_MAP[args.acc_range],
             gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
         )
-        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds | warmup=%ds",
+        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds | warmup=%ds | cooldown=%ds",
                     args.rate, args.acc_range, args.gyro_range, args.filter_hz,
                     args.threshold, args.gyro_threshold,
                     args.trigger_sources, args.trigger_combine_mode, args.duration,
-                    args.warmup)
+                    args.warmup, args.cooldown)
         return dev
 
     # ── Initial connection ────────────────────────────────────────
@@ -351,6 +353,8 @@ def main_acquisition():
 
         t0 = time.monotonic()
         warmup_until = t0 + args.warmup  # suppress auto-trigger until sensor stabilises
+        cooldown_until = 0.0  # suppress auto-trigger after a capture completes
+        prev_flag = 0  # track flag transitions for cooldown
         if args.warmup > 0:
             logger.info("Warmup period: suppressing auto-trigger for %ds", args.warmup)
         last_log = t0
@@ -408,9 +412,19 @@ def main_acquisition():
                 # ── Auto-trigger logic ───────────────────────────────
                 flag = ring.recording_flag
 
+                # Detect capture-complete → idle transition (2 → 0) to start cooldown
+                if prev_flag == 2 and flag == 0 and args.cooldown > 0:
+                    cooldown_until = time.monotonic() + args.cooldown
+                    logger.info("Cooldown period: suppressing auto-trigger for %ds", args.cooldown)
+                prev_flag = flag
+
                 if flag == 0:
                     # Suppress auto-trigger during warmup period
                     if time.monotonic() < warmup_until:
+                        continue
+
+                    # Suppress auto-trigger during cooldown period
+                    if time.monotonic() < cooldown_until:
                         continue
 
                     accel_triggered = False
