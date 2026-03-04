@@ -1453,6 +1453,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     var vkbFieldLabel = document.getElementById('vkb-field-label');
     var activeInput = null;
     var keyboard = null;
+    var vkbChanging = false;   // guard: true while virtual keyboard is updating the input
 
     var fullLayout = {
         default: [
@@ -1476,7 +1477,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
             '1 2 3',
             '4 5 6',
             '7 8 9',
-            '. 0 - {bksp}'
+            ', 0 . {bksp}'
         ]
     };
 
@@ -1499,8 +1500,10 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 
     function onKeyboardChange(input) {
         if (activeInput) {
+            vkbChanging = true;
             activeInput.value = input;
             activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+            vkbChanging = false;
         }
     }
 
@@ -1512,7 +1515,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     }
 
     function isNumericInput(el) {
-        if (el.type === 'number') return true;
+        if (el.type === 'number' || el._origType === 'number') return true;
         if (el.type === 'password') return true;
         if (el.inputMode === 'numeric' || el.inputMode === 'decimal') return true;
         return false;
@@ -1532,10 +1535,23 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     window.vkbHide = function() {
         vkbContainer.classList.remove('visible');
         document.body.classList.remove('vkb-open');
+        // Restore original type="number" so form validation still works
+        if (activeInput && activeInput._origType) {
+            activeInput.setAttribute('type', activeInput._origType);
+            activeInput.removeAttribute('inputmode');
+            delete activeInput._origType;
+        }
         activeInput = null;
     };
 
     function vkbShow(el) {
+        // Swap type="number" to type="text" so the browser accepts intermediate
+        // values such as "1." or "," while the user is still typing.
+        if (el.type === 'number') {
+            el._origType = 'number';
+            el.setAttribute('type', 'text');
+            el.setAttribute('inputmode', 'decimal');
+        }
         activeInput = el;
         vkbShowGuard = Date.now();
         var layout = isNumericInput(el) ? numericLayout : fullLayout;
@@ -1579,7 +1595,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     });
 
     document.addEventListener('input', function(e) {
-        if (e.target === activeInput && keyboard) {
+        if (e.target === activeInput && keyboard && !vkbChanging) {
             keyboard.setInput(e.target.value);
         }
     });
