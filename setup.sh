@@ -547,12 +547,31 @@ EOF
 # Waits for the rpiCoffee app to become healthy, then launches
 # Chromium in app mode (maximised, no browser chrome).
 #
+# Chromium runs in the FOREGROUND (via exec) so that systemd
+# keeps the service active for the lifetime of the browser process.
+#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 set -a; source "$SCRIPT_DIR/.env"; set +a
 
 APP_URL="http://localhost:${APP_PORT:-8080}"
+
+# ── Wait for the X display to be available ──
+MAX_DISPLAY_WAIT=60
+for (( i=1; i<=MAX_DISPLAY_WAIT/2; i++ )); do
+    if [ -S /tmp/.X11-unix/X0 ]; then
+        break
+    fi
+    echo "[kiosk] Waiting for X display... ($i)"
+    sleep 2
+done
+if [ ! -S /tmp/.X11-unix/X0 ]; then
+    echo "[kiosk] ERROR: X display not available after ${MAX_DISPLAY_WAIT}s" >&2
+    exit 1
+fi
+
+# ── Wait for the rpiCoffee web app to respond ──
 MAX_WAIT=120   # seconds
 ELAPSED=0
 
@@ -567,19 +586,29 @@ while ! curl -sf --max-time 2 "$APP_URL" > /dev/null 2>&1; do
 done
 echo "[kiosk] App is ready – launching Chromium"
 
-# Use whichever chromium binary is available (Trixie: chromium, older: chromium-browser)
+# ── Detect chromium binary (Trixie: chromium, older: chromium-browser) ──
 CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null)
 if [[ -z "$CHROMIUM_BIN" ]]; then
     echo "[kiosk] ERROR: No chromium binary found" >&2
     exit 1
 fi
 
-DISPLAY=:0 $CHROMIUM_BIN \
+# ── Clean up crash flags so Chromium doesn't show a restore prompt ──
+CHROMIUM_PREFS="$HOME/.config/chromium/Default/Preferences"
+if [[ -f "$CHROMIUM_PREFS" ]]; then
+    sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$CHROMIUM_PREFS"
+    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/'   "$CHROMIUM_PREFS"
+fi
+
+# ── Launch Chromium in the foreground (exec replaces this shell) ──
+export DISPLAY=:0
+exec $CHROMIUM_BIN \
   --app="$APP_URL" \
   --start-maximized \
   --password-store=basic \
   --disable-infobars \
-  &
+  --noerrdialogs \
+  --disable-session-crashed-bubble
 KIOSK
     chmod +x "${SCRIPT_DIR}/kiosk.sh"
     ok "Created kiosk launcher script (kiosk.sh)"
