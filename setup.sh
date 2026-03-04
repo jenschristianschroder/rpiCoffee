@@ -278,6 +278,9 @@ if [[ "$CONFIGURE_ENV" == "true" ]]; then
     prompt_yn "Enable remote-save service?" REMOTE_SAVE_ENABLED "y"
     env_set .env REMOTE_SAVE_ENABLED "$REMOTE_SAVE_ENABLED"
 
+    # Data directory (shared between app and Docker containers via volume mount)
+    env_set .env DATA_DIR           "${SCRIPT_DIR}/data"
+
     # Service ports (single source of truth for docker-compose.yml, scripts, etc.)
     env_set .env APP_PORT           "8080"
     env_set .env CLASSIFIER_PORT    "8001"

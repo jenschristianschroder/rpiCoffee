@@ -20,7 +20,7 @@ from typing import Any
 
 logger = logging.getLogger("rpicoffee.training_data")
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent / "data")))
+DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
 TRAINING_DIR = DATA_DIR / "training"
 
 # CSV column header for training files (matches the existing .csv.sample format)
