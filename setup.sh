@@ -430,9 +430,10 @@ elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
                 fail "Model pull failed — check $LOG_FILE"
             fi
         fi
-        # Stop the temporary hailo-ollama process
+        # Stop the temporary hailo-ollama process (disowned, so wait is unavailable)
         kill "$_HAILO_PID" 2>/dev/null || true
-        wait "$_HAILO_PID" 2>/dev/null || true
+        sleep 2
+        kill -9 "$_HAILO_PID" 2>/dev/null || true
     else
         warn "hailo-ollama not installed — cannot pull model; install later and run:"
         warn "  hailo-ollama &  then  curl http://localhost:8000/api/pull -H 'Content-Type: application/json' -d '{\"model\": \"${LLM_MODEL:-qwen2:1.5b}\"}'"
