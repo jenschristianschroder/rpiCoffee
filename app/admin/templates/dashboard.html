@@ -958,6 +958,27 @@ async function trainModel() {
     btn.disabled = true;
     progress.style.display = '';
     results.style.display = 'none';
+    progressText.textContent = 'Checking training data…';
+
+    // Pre-flight: check that at least 2 coffee types have training data
+    try {
+        var tdResp = await fetch('/api/training-data');
+        var tdData = await tdResp.json();
+        var labels = Object.keys(tdData).filter(function(k) { return tdData[k].length > 0; });
+        if (labels.length < 2) {
+            progressText.removeAttribute('aria-busy');
+            btn.removeAttribute('aria-busy');
+            btn.disabled = false;
+            var msg = labels.length === 0
+                ? 'No training data found. Record sensor data for at least 2 different coffee types before training.'
+                : 'Only 1 coffee type found (<strong>' + labels[0] + '</strong>). Record training data for at least one more coffee type before training a classifier.';
+            results.innerHTML = '<p style="color:var(--pico-del-color);">' + msg + '</p>';
+            results.style.display = '';
+            progress.style.display = 'none';
+            return;
+        }
+    } catch(e) { /* proceed anyway — the classifier will catch it */ }
+
     progressText.textContent = 'Starting training…';
 
     try {

@@ -49,6 +49,9 @@ echo ""
 echo -e "${BOLD}Starting rpiCoffee...${NC}"
 echo ""
 
+# Ensure host data directories exist (app/data is volume-mounted into containers)
+mkdir -p "$SCRIPT_DIR/app/data/training" "$SCRIPT_DIR/app/data/models" "$SCRIPT_DIR/app/data/audio"
+
 if [[ -n "$PROFILES" ]]; then
     info "Starting Docker services..."
     # shellcheck disable=SC2086
