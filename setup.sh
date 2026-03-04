@@ -714,6 +714,7 @@ fi
 export DISPLAY=:0
 exec $CHROMIUM_BIN \
   --kiosk "$APP_URL" \
+  --autoplay-policy=no-user-gesture-required \
   --password-store=basic \
   --disable-infobars \
   --noerrdialogs \
