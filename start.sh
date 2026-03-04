@@ -87,6 +87,14 @@ fi
 
 # ── External service health checks (not Docker-managed) ─────────
 if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+    # Ensure hailo-ollama service is started
+    if systemctl is-active rpicoffee-hailo-ollama &>/dev/null 2>&1; then
+        ok "hailo-ollama service already running"
+    else
+        info "Starting hailo-ollama service..."
+        sudo systemctl start rpicoffee-hailo-ollama 2>/dev/null || true
+    fi
+
     LLM_URL="${LLM_OLLAMA_ENDPOINT:-http://localhost:8000}"
     echo -n "  Waiting for ollama (${LLM_URL}) "
     TRIES=0; MAX_TRIES=30
