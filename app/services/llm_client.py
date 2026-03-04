@@ -91,6 +91,7 @@ class LLMClient:
                 endpoint=LLMClient._endpoint(),
                 model=config.LLM_MODEL,
                 prompt=prompt,
+                system=config.LLM_SYSTEM_MESSAGE,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
@@ -106,6 +107,7 @@ class LLMClient:
                     f"{LLMClient._endpoint()}/generate",
                     json={
                         "prompt": prompt,
+                        "system": config.LLM_SYSTEM_MESSAGE,
                         "max_tokens": max_tokens,
                         "temperature": temperature,
                         "top_p": top_p,

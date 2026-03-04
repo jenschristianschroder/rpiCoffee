@@ -125,10 +125,11 @@ def tts_clean(text: str) -> str:
     return text
 
 
-def build_prompt(user_msg: str) -> str:
+def build_prompt(user_msg: str, system: str | None = None) -> str:
     """Build a Qwen2.5 chat-template prompt."""
+    sys_msg = system if system else SYSTEM_PROMPT
     return (
-        f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
+        f"<|im_start|>system\n{sys_msg}<|im_end|>\n"
         f"<|im_start|>user\n{user_msg}<|im_end|>\n"
         f"<|im_start|>assistant\n"
     )
@@ -149,6 +150,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length)) if length else {}
         user_prompt = body.get("prompt", "")
+        system = body.get("system", None)
         max_tokens = body.get("max_tokens", 256)
         temperature = body.get("temperature", 0.7)
         top_p = body.get("top_p", 0.9)
@@ -159,7 +161,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         day_name, time_24h, _ = parse_timestamp(user_prompt)
-        prompt = build_prompt(user_prompt)
+        prompt = build_prompt(user_prompt, system=system)
         # Reset KV cache to ensure each inference is independent
         model.reset()
         t0 = time.perf_counter()

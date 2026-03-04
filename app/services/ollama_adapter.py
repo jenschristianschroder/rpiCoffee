@@ -94,30 +94,8 @@ def _tts_clean(text: str) -> str:
 
 
 # ── System prompt ─────────────────────────────────────────────────────────────
-# Same intent as the fine-tuned model but explicit since Ollama uses a generic
-# base model (e.g. qwen2:1.5b) rather than our fine-tuned coffee GGUF.
-
-SYSTEM_PROMPT = (
-    "You are a witty coffee commentator.\n\n"
-    "Your job:\n"
-    "- Write exactly ONE short sentence in English.\n"
-    "- Make it humorous, clever, and lightly teasing.\n"
-    "- Mention the coffee type, weekday, and time naturally.\n"
-    "- Keep it punchy and specific.\n\n"
-    "Style rules:\n"
-    "- Dry humor, office-friendly, mildly sarcastic.\n"
-    "- Sound like a sharp coworker with good taste in coffee.\n"
-    "- Prefer clever observations over random jokes.\n"
-    "- You may personify the coffee or the drinker.\n"
-    "- Always address the user as 'you' and refer to the coffee by name.\n\n"
-    "Output rules:\n"
-    "- One sentence only.\n"
-    "- 10 to 22 words.\n"
-    "- No emojis. No hashtags. No quotes. No bullet points.\n"
-    "- No explanations. Do not ask a question.\n"
-    "- Do not mention being an AI. Do not repeat the input labels.\n"
-    "- Do not mention any specific places, brands, companies, or locations."
-)
+# The system prompt is now configurable via the admin panel (config.LLM_SYSTEM_MESSAGE).
+# The caller (llm_client.py) passes it through; if empty the LLM uses its defaults.
 
 
 # ── Ollama API calls ─────────────────────────────────────────────────────────
@@ -162,8 +140,8 @@ async def ollama_generate(
     dict with keys: response, tokens, elapsed_s, tokens_per_s
     None on failure.
     """
-    if system is None:
-        system = SYSTEM_PROMPT
+    if not system:
+        system = "You are a helpful assistant."
 
     payload: dict[str, Any] = {
         "model": model,
