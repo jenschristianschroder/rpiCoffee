@@ -963,7 +963,7 @@ async function trainModel() {
     // Pre-flight: check that at least 2 coffee types have training data
     try {
         var tdResp = await fetch('/api/training-data');
-        var tdData = await tdResp.json();
+        var tdData = (await tdResp.json()).training_data || {};
         var labels = Object.keys(tdData).filter(function(k) { return tdData[k].length > 0; });
         if (labels.length < 2) {
             progressText.removeAttribute('aria-busy');
