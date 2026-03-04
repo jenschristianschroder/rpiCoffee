@@ -63,6 +63,7 @@ _DEFAULTS: dict[str, Any] = {
     "SENSOR_GYRO_THRESHOLD": 10.0,            # RMS gyro threshold in dps
     "SENSOR_GYRO_RMS_WINDOW_S": 1.0,          # Separate RMS window for gyro (seconds)
     "SENSOR_WARMUP_S": 5,                      # Seconds to ignore triggers after sensor start
+    "SENSOR_COOLDOWN_S": 10,                     # Seconds to wait after a capture before allowing a new trigger
     # LLM generation parameters
     "LLM_MAX_TOKENS": 256,
     "LLM_TEMPERATURE": 0.7,
@@ -86,7 +87,8 @@ _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_T
               "VIRTUAL_KEYBOARD_ENABLED"}
 _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
-             "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE", "SENSOR_WARMUP_S"}
+             "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE", "SENSOR_WARMUP_S",
+             "SENSOR_COOLDOWN_S"}
 _FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S",
                "SENSOR_GYRO_THRESHOLD", "SENSOR_GYRO_RMS_WINDOW_S"}
 
@@ -114,6 +116,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "SENSOR_GYRO_THRESHOLD": "Gyro RMS threshold (dps) for auto-trigger when using gyroscope source",
     "SENSOR_GYRO_RMS_WINDOW_S": "Sliding window length in seconds used to compute the gyro RMS value",
     "SENSOR_WARMUP_S": "Seconds to wait after sensor start before allowing auto-trigger (avoids false triggers on boot)",
+    "SENSOR_COOLDOWN_S": "Seconds to wait after a capture completes before allowing a new auto-trigger",
     # Classifier
     "CLASSIFIER_ENABLED": "Enable the ML classifier service for coffee-type detection",
     "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",

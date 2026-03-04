@@ -223,6 +223,7 @@ def _start_sensor() -> None:
         gyro_threshold=cfg.get("SENSOR_GYRO_THRESHOLD", 10.0),
         gyro_rms_window_s=cfg.get("SENSOR_GYRO_RMS_WINDOW_S", 1.0),
         warmup_s=cfg.get("SENSOR_WARMUP_S", 5),
+        cooldown_s=cfg.get("SENSOR_COOLDOWN_S", 10),
     )
     _sensor_started = True
 
