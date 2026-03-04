@@ -269,6 +269,8 @@ def main_acquisition():
                         help="RMS gyro threshold (dps) for auto-trigger")
     parser.add_argument("--gyro-rms-window", type=float, default=1.0,
                         help="Gyro RMS averaging window in seconds")
+    parser.add_argument("--warmup", type=int, default=5,
+                        help="Seconds after start to suppress auto-trigger (sensor stabilisation)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -322,10 +324,11 @@ def main_acquisition():
             acc_range=_ACC_RANGE_MAP[args.acc_range],
             gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
         )
-        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds",
+        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds | warmup=%ds",
                     args.rate, args.acc_range, args.gyro_range, args.filter_hz,
                     args.threshold, args.gyro_threshold,
-                    args.trigger_sources, args.trigger_combine_mode, args.duration)
+                    args.trigger_sources, args.trigger_combine_mode, args.duration,
+                    args.warmup)
         return dev
 
     # ── Initial connection ────────────────────────────────────────
@@ -347,6 +350,9 @@ def main_acquisition():
         ring.status = 1
 
         t0 = time.monotonic()
+        warmup_until = t0 + args.warmup  # suppress auto-trigger until sensor stabilises
+        if args.warmup > 0:
+            logger.info("Warmup period: suppressing auto-trigger for %ds", args.warmup)
         last_log = t0
         batch: list[list[float]] = []
         samples_since_log = 0
@@ -403,6 +409,10 @@ def main_acquisition():
                 flag = ring.recording_flag
 
                 if flag == 0:
+                    # Suppress auto-trigger during warmup period
+                    if time.monotonic() < warmup_until:
+                        continue
+
                     accel_triggered = False
                     gyro_triggered = False
                     accel_rms = 0.0

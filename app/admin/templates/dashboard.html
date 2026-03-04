@@ -1155,6 +1155,12 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 {% if descriptions.get('SENSOR_FILTER_HZ') %}<small>{{ descriptions['SENSOR_FILTER_HZ'] }}</small>{% endif %}
             </label>
         </div>
+        <div class="grid">
+            <label for="SENSOR_WARMUP_S">Warmup (s)
+                <input type="number" id="SENSOR_WARMUP_S" name="SENSOR_WARMUP_S" value="{{ config['SENSOR_WARMUP_S'] }}" min="0" max="30" step="1">
+                {% if descriptions.get('SENSOR_WARMUP_S') %}<small>{{ descriptions['SENSOR_WARMUP_S'] }}</small>{% endif %}
+            </label>
+        </div>
         <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem;">
             <button type="submit" style="margin:0;">&#128190; Save &amp; Restart Sensor</button>
             <span id="config-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>
