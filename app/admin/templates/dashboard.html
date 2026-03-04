@@ -1418,12 +1418,12 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     <form method="post" action="/admin/password" autocomplete="off" id="pw-form">
         <label for="current_password">Current Password
             <input type="password" id="current_password" name="current_password" required
-                   inputmode="numeric"
+                   inputmode="numeric" autocomplete="off" value=""
                    style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;">
         </label>
         <label for="new_password">New Password
             <input type="password" id="new_password" name="new_password" required minlength="4"
-                   inputmode="numeric"
+                   inputmode="numeric" autocomplete="new-password" value=""
                    style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;">
         </label>
         <button type="submit">Change Password</button>
