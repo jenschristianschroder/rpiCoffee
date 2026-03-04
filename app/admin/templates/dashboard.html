@@ -1489,7 +1489,7 @@ document.addEventListener('click', function(e) {
         <span id="vkb-field-label"></span>
         <button class="vkb-close" onclick="vkbHide()" title="Close keyboard">&times;</button>
     </div>
-    <div id="vkb-keyboard"></div>
+    <div class="simple-keyboard" id="vkb-keyboard"></div>
 </div>
 <script>
 (function() {
@@ -1526,7 +1526,7 @@ document.addEventListener('click', function(e) {
 
     function initKeyboard(layout) {
         if (keyboard) keyboard.destroy();
-        keyboard = new window.SimpleKeyboard.default({
+        keyboard = new window.SimpleKeyboard.default("#vkb-keyboard", {
             onChange: onKeyboardChange,
             onKeyPress: onKeyPress,
             layout: layout,
