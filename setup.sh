@@ -400,9 +400,11 @@ elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
     if [[ "${HAILO_OLLAMA_INSTALLED:-false}" == "true" ]]; then
         _OLLAMA_MODEL="${LLM_MODEL:-qwen2:1.5b}"
         info "Pulling model '${_OLLAMA_MODEL}' into hailo-ollama..."
-        # Start hailo-ollama temporarily in the background
-        hailo-ollama &
+        # Start hailo-ollama temporarily in the background (suppress its output)
+        hailo-ollama >> "$LOG_FILE" 2>&1 &
         _HAILO_PID=$!
+        # Disown so it doesn't receive signals from the script's process group
+        disown "$_HAILO_PID" 2>/dev/null || true
         _PULL_URL="http://localhost:8000"
         _PULL_TRIES=0; _PULL_MAX=30
         echo -n "  Waiting for hailo-ollama to start "
@@ -418,6 +420,7 @@ elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
         done
         if (( _PULL_TRIES < _PULL_MAX )); then
             echo ""
+            ok "hailo-ollama is running (pid ${_HAILO_PID})"
             if curl -sf --max-time 300 "${_PULL_URL}/api/pull" \
                  -H 'Content-Type: application/json' \
                  -d "{\"model\": \"${_OLLAMA_MODEL}\", \"stream\": true}" \
