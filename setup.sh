@@ -191,6 +191,29 @@ if $GROUP_CHANGED; then
     warn "Group membership changed – log out & back in (or reboot) for it to take effect"
 fi
 
+# hailo-ollama (installed later in Phase 7, but we detect it early)
+if command -v hailo-ollama &>/dev/null; then
+    ok "hailo-ollama binary found: $(command -v hailo-ollama)"
+    HAILO_OLLAMA_INSTALLED=true
+else
+    HAILO_OLLAMA_INSTALLED=false
+    # Check if the .deb is available in the project root
+    HAILO_DEB=$(ls "${SCRIPT_DIR}"/hailo_gen_ai_model_zoo_*.deb 2>/dev/null | head -1 || true)
+    if [[ -n "$HAILO_DEB" ]]; then
+        info "Found hailo package: $(basename "$HAILO_DEB")"
+        info "Installing hailo_gen_ai_model_zoo..."
+        if sudo apt install -y "$HAILO_DEB" >> "$LOG_FILE" 2>&1; then
+            ok "hailo_gen_ai_model_zoo installed"
+            HAILO_OLLAMA_INSTALLED=true
+        else
+            fail "hailo_gen_ai_model_zoo install failed — check $LOG_FILE"
+        fi
+    else
+        info "hailo-ollama not installed (needed only if LLM backend = ollama)"
+        info "Download the .deb from https://hailo.ai/developer-zone/ and place it in ${SCRIPT_DIR}/"
+    fi
+fi
+
 # ════════════════════════════════════════════════════════════════
 #  Phase 2: Environment Configuration
 # ════════════════════════════════════════════════════════════════
@@ -373,6 +396,44 @@ if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollam
     fi
 elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
     info "LLM using hailo-ollama — GGUF model not needed"
+    # Pull the configured model into hailo-ollama
+    if [[ "${HAILO_OLLAMA_INSTALLED:-false}" == "true" ]]; then
+        _OLLAMA_MODEL="${LLM_MODEL:-qwen2:1.5b}"
+        info "Pulling model '${_OLLAMA_MODEL}' into hailo-ollama..."
+        # Start hailo-ollama temporarily in the background
+        hailo-ollama &
+        _HAILO_PID=$!
+        _PULL_URL="http://localhost:8000"
+        _PULL_TRIES=0; _PULL_MAX=30
+        echo -n "  Waiting for hailo-ollama to start "
+        while ! curl -sf --max-time 2 "${_PULL_URL}/api/tags" > /dev/null 2>&1; do
+            ((_PULL_TRIES++))
+            if (( _PULL_TRIES >= _PULL_MAX )); then
+                echo ""
+                fail "hailo-ollama did not start within ${_PULL_MAX}×2s"
+                break
+            fi
+            echo -n "."
+            sleep 2
+        done
+        if (( _PULL_TRIES < _PULL_MAX )); then
+            echo ""
+            if curl -sf --max-time 300 "${_PULL_URL}/api/pull" \
+                 -H 'Content-Type: application/json' \
+                 -d "{\"model\": \"${_OLLAMA_MODEL}\", \"stream\": true}" \
+                 >> "$LOG_FILE" 2>&1; then
+                ok "Model '${_OLLAMA_MODEL}' pulled successfully"
+            else
+                fail "Model pull failed — check $LOG_FILE"
+            fi
+        fi
+        # Stop the temporary hailo-ollama process
+        kill "$_HAILO_PID" 2>/dev/null || true
+        wait "$_HAILO_PID" 2>/dev/null || true
+    else
+        warn "hailo-ollama not installed — cannot pull model; install later and run:"
+        warn "  hailo-ollama &  then  curl http://localhost:8000/api/pull -H 'Content-Type: application/json' -d '{\"model\": \"${LLM_MODEL:-qwen2:1.5b}\"}'"
+    fi
 else
     info "LLM disabled — skipping model download"
 fi
@@ -514,12 +575,57 @@ TimeoutStartSec=0
 WantedBy=multi-user.target
 EOF
 
+    # hailo-ollama unit (only when using ollama backend)
+    if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+        HAILO_BIN="$(command -v hailo-ollama 2>/dev/null || echo /usr/bin/hailo-ollama)"
+        sudo tee /etc/systemd/system/rpicoffee-hailo-ollama.service > /dev/null <<EOF
+[Unit]
+Description=rpiCoffee hailo-ollama LLM Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${HAILO_BIN}
+Restart=on-failure
+RestartSec=5
+User=${USER}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        ok "hailo-ollama systemd service created"
+        HAILO_UNIT_CREATED=true
+    else
+        # Ensure stale unit is disabled if switching away from ollama
+        if systemctl is-enabled rpicoffee-hailo-ollama &>/dev/null 2>&1; then
+            sudo systemctl stop rpicoffee-hailo-ollama 2>/dev/null || true
+            sudo systemctl disable rpicoffee-hailo-ollama 2>/dev/null || true
+            info "Disabled stale rpicoffee-hailo-ollama service"
+        fi
+        HAILO_UNIT_CREATED=false
+    fi
+
+    # Sudoers drop-in for hailo-ollama management from the app
+    sudo tee /etc/sudoers.d/rpicoffee-hailo-ollama > /dev/null <<EOF
+${USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl start rpicoffee-hailo-ollama, /usr/bin/systemctl stop rpicoffee-hailo-ollama, /usr/bin/systemctl enable rpicoffee-hailo-ollama, /usr/bin/systemctl disable rpicoffee-hailo-ollama, /usr/bin/systemctl is-active rpicoffee-hailo-ollama, /usr/bin/systemctl is-enabled rpicoffee-hailo-ollama
+EOF
+    sudo chmod 0440 /etc/sudoers.d/rpicoffee-hailo-ollama
+    ok "Sudoers drop-in for hailo-ollama management created"
+
     # App unit
+    HAILO_AFTER=""
+    HAILO_WANTS=""
+    if [[ "${HAILO_UNIT_CREATED:-false}" == "true" ]]; then
+        HAILO_AFTER=" rpicoffee-hailo-ollama.service"
+        HAILO_WANTS="Wants=rpicoffee-hailo-ollama.service"
+    fi
     sudo tee /etc/systemd/system/rpicoffee-app.service > /dev/null <<EOF
 [Unit]
 Description=rpiCoffee Application
-After=rpicoffee-services.service
+After=rpicoffee-services.service${HAILO_AFTER}
 Requires=rpicoffee-services.service
+${HAILO_WANTS}
 
 [Service]
 Type=simple
@@ -636,8 +742,13 @@ EOF
     ok "Kiosk systemd service created"
 
     sudo systemctl daemon-reload
-    sudo systemctl enable rpicoffee-services rpicoffee-app rpicoffee-kiosk
-    ok "Systemd services created and enabled (including kiosk)"
+    ENABLE_UNITS="rpicoffee-services rpicoffee-app rpicoffee-kiosk"
+    if [[ "${HAILO_UNIT_CREATED:-false}" == "true" ]]; then
+        ENABLE_UNITS="rpicoffee-hailo-ollama $ENABLE_UNITS"
+    fi
+    # shellcheck disable=SC2086
+    sudo systemctl enable $ENABLE_UNITS
+    ok "Systemd services created and enabled"
 else
     info "Skipping systemd setup"
 fi
@@ -717,6 +828,18 @@ if [[ "${SENSOR_MODE:-mock}" == "picoquake" ]]; then
     fi
 else
     info "USB sensor: not configured (mode=${SENSOR_MODE:-mock})"
+fi
+
+# hailo-ollama
+if [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+    if [[ "${HAILO_OLLAMA_INSTALLED:-false}" == "true" ]]; then
+        ok "hailo-ollama: installed"
+    else
+        warn "hailo-ollama: NOT installed — download from https://hailo.ai/developer-zone/"
+    fi
+    if [[ "${HAILO_UNIT_CREATED:-false}" == "true" ]]; then
+        ok "hailo-ollama: systemd service enabled (auto-start at boot)"
+    fi
 fi
 
 # Systemd

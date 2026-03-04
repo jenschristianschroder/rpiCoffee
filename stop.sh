@@ -21,10 +21,21 @@ else
     info "Application was not running"
 fi
 
-# ── Stop Docker services ─────────────────────────────────────────
+# ── Stop hailo-ollama if running ─────────────────────────────────
 if [[ -f .env ]]; then
     set -a; source .env; set +a
 fi
+
+if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+    if systemctl is-active rpicoffee-hailo-ollama &>/dev/null 2>&1; then
+        sudo systemctl stop rpicoffee-hailo-ollama 2>/dev/null || true
+        ok "hailo-ollama service stopped"
+    else
+        info "hailo-ollama service was not running"
+    fi
+fi
+
+# ── Stop Docker services ─────────────────────────────────────────
 
 PROFILES=""
 [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && PROFILES="$PROFILES --profile classifier"

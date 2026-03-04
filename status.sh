@@ -191,7 +191,10 @@ if [[ "${LLM_ENABLED:-false}" == "true" ]]; then
         # External service — use the dedicated Ollama endpoint
         _OLLAMA_URL="${LLM_OLLAMA_ENDPOINT:-http://localhost:8000}"
         read -r l_host l_port <<< "$(parse_endpoint "$_OLLAMA_URL")"
-        STATUS[llm]="external (ollama)"
+        # Show systemd unit status alongside health
+        _HAILO_ACTIVE="$(systemctl is-active rpicoffee-hailo-ollama 2>/dev/null || echo unknown)"
+        _HAILO_ENABLED="$(systemctl is-enabled rpicoffee-hailo-ollama 2>/dev/null || echo unknown)"
+        STATUS[llm]="external (ollama) unit=${_HAILO_ACTIVE}/${_HAILO_ENABLED}"
         HEALTH[llm]="$(http_health "${_OLLAMA_URL}/api/tags")"
         EXTRA[llm]="backend=ollama model=${LLM_MODEL:-qwen2:1.5b}"
     else

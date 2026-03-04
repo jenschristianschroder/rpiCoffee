@@ -140,7 +140,8 @@ async def update_settings(request: Request, session: str | None = Cookie(default
     form = await request.form()
     updates: dict = {}
 
-    # Snapshot current sensor config for change detection
+    # Snapshot current config for change detection
+    old_backend = config.get("LLM_BACKEND")
     old_sensor = {k: config.get(k) for k in _SENSOR_KEYS}
 
     for key in _EDITABLE_KEYS:
@@ -152,6 +153,25 @@ async def update_settings(request: Request, session: str | None = Cookie(default
 
     config.update_many(updates)
     logger.info("Settings updated: %s", list(updates.keys()))
+
+    # If LLM backend changed, start/stop hailo-ollama service
+    new_backend = config.get("LLM_BACKEND")
+    if old_backend != new_backend:
+        from services.hailo_ollama_manager import start_and_enable, stop_and_disable
+        if new_backend == "ollama":
+            logger.info("LLM backend → ollama: starting hailo-ollama service")
+            try:
+                healthy = await start_and_enable()
+                if not healthy:
+                    logger.warning("hailo-ollama started but health check did not pass")
+            except Exception:
+                logger.exception("Failed to start hailo-ollama service")
+        else:
+            logger.info("LLM backend → %s: stopping hailo-ollama service", new_backend)
+            try:
+                await stop_and_disable()
+            except Exception:
+                logger.exception("Failed to stop hailo-ollama service")
 
     # If any sensor-related setting changed, restart the sensor
     new_sensor = {k: config.get(k) for k in _SENSOR_KEYS}
