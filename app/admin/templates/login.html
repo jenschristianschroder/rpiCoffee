@@ -2,9 +2,48 @@
 {% block title %}Login – rpiCoffee{% endblock %}
 
 {% block head %}
+{% if config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-keyboard@latest/build/css/index.css">
+<script src="https://cdn.jsdelivr.net/npm/simple-keyboard@latest/build/index.js"></script>
+<style>
+    .vkb-container {
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+        background: var(--pico-card-background-color);
+        border-top: 2px solid var(--pico-muted-border-color);
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+        padding: 0.5rem 0.5rem 0.75rem;
+        display: none;
+        transition: transform 0.2s ease;
+    }
+    .vkb-container.visible { display: block; }
+    .vkb-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0 0.5rem 0.4rem; font-size: 0.8rem; color: var(--pico-muted-color);
+    }
+    .vkb-close {
+        background: none; border: none; font-size: 1.2rem; cursor: pointer;
+        color: var(--pico-muted-color); padding: 0 0.3rem; line-height: 1;
+    }
+    .vkb-close:hover { color: var(--pico-del-color); }
+    .simple-keyboard { background: transparent; }
+    .simple-keyboard .hg-button {
+        background: var(--pico-card-background-color);
+        border: 1px solid var(--pico-muted-border-color);
+        color: var(--pico-color);
+        border-radius: 6px; height: 44px; font-size: 1rem;
+    }
+    .simple-keyboard .hg-button:active,
+    .simple-keyboard .hg-button.hg-activeButton {
+        background: var(--pico-primary-background);
+        color: var(--pico-primary-inverse);
+    }
+    body.vkb-open { padding-bottom: 280px; }
+</style>
+{% endif %}
 <style>
     .login-section { max-width: 360px; margin: 2rem auto; }
     .login-section hgroup { text-align: center; }
+    {% if not config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
     .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.75rem 0; }
     .numpad button {
         font-size: 1.6rem; padding: 0.8rem 0; border-radius: 0.5rem;
@@ -17,6 +56,7 @@
     .numpad button:active { background: var(--pico-primary-background); }
     .numpad .btn-clear { font-size: 1.1rem; }
     .numpad .btn-back { font-size: 1.3rem; }
+    {% endif %}
     #password { font-size: 1.2rem; text-align: center; letter-spacing: 0.3rem; }
     .back-link { text-align: center; margin-top: 1rem; }
     .back-link a { color: var(--pico-muted-color); font-size: 0.85rem; text-decoration: none; }
@@ -35,7 +75,11 @@
     {% endif %}
 
     <form method="post" action="/admin/login" autocomplete="off">
-        <input type="password" id="password" name="password" placeholder="Enter PIN" inputmode="none" readonly required>
+        {% if config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
+        <input type="password" id="password" name="password" placeholder="Enter PIN"
+               inputmode="numeric" autocomplete="off" required>
+        {% else %}
+        <input type="password" id="password" name="password" placeholder="Enter PIN" inputmode="none" autocomplete="off" readonly required>
         <div class="numpad">
             <button type="button" onclick="numPress('1')">1</button>
             <button type="button" onclick="numPress('2')">2</button>
@@ -50,14 +94,75 @@
             <button type="button" onclick="numPress('0')">0</button>
             <button type="button" class="btn-back" onclick="numBack()">&#9003;</button>
         </div>
+        {% endif %}
         <button type="submit">Login</button>
     </form>
     <div class="back-link"><a href="/">&larr; Back to kiosk</a></div>
 </section>
+{% if config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
+<div class="vkb-container" id="vkb-container">
+    <div class="vkb-header">
+        <span id="vkb-field-label">PIN</span>
+        <button class="vkb-close" onclick="vkbHide()" title="Close keyboard">&times;</button>
+    </div>
+    <div class="simple-keyboard vkb-kb"></div>
+</div>
+<script>
+(function() {
+    var vkbContainer = document.getElementById('vkb-container');
+    var activeInput = document.getElementById('password');
+    var keyboard = null;
+
+    var numericLayout = {
+        default: [
+            '1 2 3',
+            '4 5 6',
+            '7 8 9',
+            '{bksp} 0 {enter}'
+        ]
+    };
+
+    function initKeyboard() {
+        keyboard = new window.SimpleKeyboard.default(".vkb-kb", {
+            onChange: function(input) {
+                activeInput.value = input;
+                activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+            },
+            onKeyPress: function(button) {
+                if (button === '{enter}') {
+                    activeInput.closest('form').submit();
+                }
+            },
+            layout: numericLayout,
+            display: { '{bksp}': '\u232b', '{enter}': '\u21b5' },
+            mergeDisplay: true,
+        });
+    }
+
+    window.vkbHide = function() {
+        vkbContainer.classList.remove('visible');
+        document.body.classList.remove('vkb-open');
+    };
+
+    function vkbShow() {
+        vkbContainer.classList.add('visible');
+        document.body.classList.add('vkb-open');
+    }
+
+    initKeyboard();
+
+    activeInput.addEventListener('focus', function() { vkbShow(); });
+
+    // Auto-focus to show keyboard immediately
+    activeInput.focus();
+})();
+</script>
+{% else %}
 <script>
     var pinInput = document.getElementById('password');
     function numPress(d) { pinInput.value += d; }
     function numClear() { pinInput.value = ''; }
     function numBack() { pinInput.value = pinInput.value.slice(0, -1); }
 </script>
+{% endif %}
 {% endblock %}

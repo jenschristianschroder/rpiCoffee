@@ -7,6 +7,45 @@
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+{% if config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-keyboard@latest/build/css/index.css">
+<script src="https://cdn.jsdelivr.net/npm/simple-keyboard@latest/build/index.js"></script>
+<style>
+    .vkb-container {
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+        background: var(--pico-card-background-color);
+        border-top: 2px solid var(--pico-muted-border-color);
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+        padding: 0.5rem 0.5rem 0.75rem;
+        display: none;
+        transition: transform 0.2s ease;
+    }
+    .vkb-container.visible { display: block; }
+    .vkb-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0 0.5rem 0.4rem; font-size: 0.8rem; color: var(--pico-muted-color);
+    }
+    .vkb-close {
+        background: none; border: none; font-size: 1.2rem; cursor: pointer;
+        color: var(--pico-muted-color); padding: 0 0.3rem; line-height: 1;
+    }
+    .vkb-close:hover { color: var(--pico-del-color); }
+    .simple-keyboard { background: transparent; }
+    .simple-keyboard .hg-button {
+        background: var(--pico-card-background-color);
+        border: 1px solid var(--pico-muted-border-color);
+        color: var(--pico-color);
+        border-radius: 6px; height: 44px; font-size: 1rem;
+    }
+    .simple-keyboard .hg-button:active,
+    .simple-keyboard .hg-button.hg-activeButton {
+        background: var(--pico-primary-background);
+        color: var(--pico-primary-inverse);
+    }
+    .simple-keyboard .hg-button.hg-button-space { min-width: 40%; }
+    body.vkb-open { padding-bottom: 280px; }
+</style>
+{% endif %}
 <style>
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem; }
     .stat-card { background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color);
@@ -30,19 +69,7 @@
     .chart-wrap { position: relative; height: 280px; margin-bottom: 0.5rem; }
     .stream-meta { font-size: 0.8rem; color: var(--pico-muted-color); text-align: right; }
     @media (max-width: 700px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
-    .pw-numpad { display: none; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0.75rem 0; max-width: 320px; }
-    .pw-numpad.visible { display: grid; }
-    .pw-numpad button {
-        font-size: 1.4rem; padding: 0.7rem 0; border-radius: 0.5rem;
-        border: 1px solid var(--pico-muted-border-color);
-        background: var(--pico-card-background-color); color: var(--pico-color);
-        cursor: pointer; touch-action: manipulation;
-        -webkit-tap-highlight-color: transparent; user-select: none;
-        transition: background 0.15s;
-    }
-    .pw-numpad button:active { background: var(--pico-primary-background); }
-    .pw-numpad .btn-clear { font-size: 0.95rem; }
-    .pw-numpad .btn-back { font-size: 1.1rem; }
+
     /* Collapsible cards */
     .card > h3,
     .card > .live-header > h3 { cursor: pointer; user-select: none; }
@@ -1295,6 +1322,20 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
             </div>
         </fieldset>
 
+        <fieldset>
+            <legend><strong>UI</strong> – Interface Options</legend>
+            <div class="grid">
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
+                    Virtual Keyboard
+                    <input type="checkbox" name="VIRTUAL_KEYBOARD_ENABLED" role="switch"
+                           {% if config['VIRTUAL_KEYBOARD_ENABLED'] %}checked{% endif %}>
+                </label>
+                {% if descriptions.get('VIRTUAL_KEYBOARD_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['VIRTUAL_KEYBOARD_ENABLED'] }}</small>{% endif %}
+                </div>
+            </div>
+        </fieldset>
+
         <button type="submit">Save Settings</button>
     </form>
 </div>
@@ -1377,55 +1418,165 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     <form method="post" action="/admin/password" autocomplete="off" id="pw-form">
         <label for="current_password">Current Password
             <input type="password" id="current_password" name="current_password" required
-                   inputmode="none" readonly onclick="activatePwField(this)"
-                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;cursor:pointer;">
+                   inputmode="numeric" autocomplete="off" value=""
+                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;">
         </label>
         <label for="new_password">New Password
             <input type="password" id="new_password" name="new_password" required minlength="4"
-                   inputmode="none" readonly onclick="activatePwField(this)"
-                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;cursor:pointer;">
+                   inputmode="numeric" autocomplete="new-password" value=""
+                   style="text-align:center;letter-spacing:0.3rem;font-size:1.1rem;">
         </label>
-        <div class="pw-numpad" id="pw-numpad">
-            <button type="button" onclick="pwNumPress('1')">1</button>
-            <button type="button" onclick="pwNumPress('2')">2</button>
-            <button type="button" onclick="pwNumPress('3')">3</button>
-            <button type="button" onclick="pwNumPress('4')">4</button>
-            <button type="button" onclick="pwNumPress('5')">5</button>
-            <button type="button" onclick="pwNumPress('6')">6</button>
-            <button type="button" onclick="pwNumPress('7')">7</button>
-            <button type="button" onclick="pwNumPress('8')">8</button>
-            <button type="button" onclick="pwNumPress('9')">9</button>
-            <button type="button" class="btn-clear" onclick="pwNumClear()">Clear</button>
-            <button type="button" onclick="pwNumPress('0')">0</button>
-            <button type="button" class="btn-back" onclick="pwNumBack()">&#9003;</button>
-        </div>
         <button type="submit">Change Password</button>
     </form>
 </div>
+
+
+{% if config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
+<!-- Virtual On-Screen Keyboard -->
+<div class="vkb-container" id="vkb-container">
+    <div class="vkb-header">
+        <span id="vkb-field-label"></span>
+        <button class="vkb-close" onclick="vkbHide()" title="Close keyboard">&times;</button>
+    </div>
+    <div class="simple-keyboard vkb-kb"></div>
+</div>
 <script>
-var _activePwField = null;
-var _pwNumpad = document.getElementById('pw-numpad');
-function activatePwField(el) {
-    document.querySelectorAll('#current_password,#new_password').forEach(function(f){ f.style.outline=''; });
-    el.style.outline = '2px solid var(--pico-primary)';
-    _activePwField = el;
-    // Move numpad after the clicked field's label and show it
-    el.parentNode.after(_pwNumpad);
-    _pwNumpad.classList.add('visible');
-}
-function pwNumPress(d) {
-    if (!_activePwField) return;
-    _activePwField.value += d;
-}
-function pwNumClear() { if (_activePwField) _activePwField.value = ''; }
-function pwNumBack() { if (_activePwField) _activePwField.value = _activePwField.value.slice(0, -1); }
-// Dismiss numpad when clicking outside the password form
-document.addEventListener('click', function(e) {
-    var form = document.getElementById('pw-form');
-    if (form && !form.contains(e.target)) {
-        _pwNumpad.classList.remove('visible');
-        if (_activePwField) { _activePwField.style.outline = ''; _activePwField = null; }
+(function() {
+    var vkbContainer = document.getElementById('vkb-container');
+    var vkbFieldLabel = document.getElementById('vkb-field-label');
+    var activeInput = null;
+    var keyboard = null;
+
+    var fullLayout = {
+        default: [
+            '` 1 2 3 4 5 6 7 8 9 0 - = {bksp}',
+            'q w e r t y u i o p [ ] \\',
+            '{lock} a s d f g h j k l ; \'',
+            '{shift} z x c v b n m , . / {shift}',
+            '{space}'
+        ],
+        shift: [
+            '~ ! @ # $ % ^ & * ( ) _ + {bksp}',
+            'Q W E R T Y U I O P { } |',
+            '{lock} A S D F G H J K L : "',
+            '{shift} Z X C V B N M < > ? {shift}',
+            '{space}'
+        ]
+    };
+
+    var numericLayout = {
+        default: [
+            '1 2 3',
+            '4 5 6',
+            '7 8 9',
+            '. 0 - {bksp}'
+        ]
+    };
+
+    function initKeyboard(layout) {
+        if (keyboard) keyboard.destroy();
+        keyboard = new window.SimpleKeyboard.default(".vkb-kb", {
+            onChange: onKeyboardChange,
+            onKeyPress: onKeyPress,
+            layout: layout,
+            display: {
+                '{bksp}': '\u232b',
+                '{space}': '\u2423',
+                '{shift}': '\u21e7',
+                '{lock}': '\u21ea',
+            },
+            mergeDisplay: true,
+            physicalKeyboardHighlight: true,
+        });
     }
-});
+
+    function onKeyboardChange(input) {
+        if (activeInput) {
+            activeInput.value = input;
+            activeInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
+    function onKeyPress(button) {
+        if (button === '{shift}' || button === '{lock}') {
+            var currentLayout = keyboard.options.layoutName || 'default';
+            keyboard.setOptions({ layoutName: currentLayout === 'default' ? 'shift' : 'default' });
+        }
+    }
+
+    function isNumericInput(el) {
+        if (el.type === 'number') return true;
+        if (el.type === 'password') return true;
+        if (el.inputMode === 'numeric' || el.inputMode === 'decimal') return true;
+        return false;
+    }
+
+    function shouldShowKeyboard(el) {
+        if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
+        if (el.readOnly || el.disabled) return false;
+        var skipTypes = ['checkbox', 'radio', 'file', 'hidden', 'submit', 'button', 'range', 'color'];
+        if (skipTypes.indexOf(el.type) !== -1) return false;
+        if (el.closest('.numpad')) return false;
+        return true;
+    }
+
+    var vkbShowGuard = 0;   // timestamp-based guard against hide-after-show race
+
+    window.vkbHide = function() {
+        vkbContainer.classList.remove('visible');
+        document.body.classList.remove('vkb-open');
+        activeInput = null;
+    };
+
+    function vkbShow(el) {
+        activeInput = el;
+        vkbShowGuard = Date.now();
+        var layout = isNumericInput(el) ? numericLayout : fullLayout;
+        initKeyboard(layout);
+        keyboard.setInput(el.value || '');
+        var label = el.closest('label');
+        vkbFieldLabel.textContent = label ? label.childNodes[0].textContent.trim() : (el.placeholder || el.name || '');
+
+        // Show keyboard FIRST so body padding applies before scroll measurement
+        vkbContainer.classList.add('visible');
+        document.body.classList.add('vkb-open');
+
+        // Wait for keyboard to render and layout to settle, then scroll if needed
+        requestAnimationFrame(function() {
+            setTimeout(function() {
+                var kbHeight = vkbContainer.offsetHeight || 260;
+                var rect = el.getBoundingClientRect();
+                var viewportH = window.innerHeight;
+                if (rect.bottom > viewportH - kbHeight - 20) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 50);
+        });
+    }
+
+    document.addEventListener('focusin', function(e) {
+        if (shouldShowKeyboard(e.target)) {
+            vkbShow(e.target);
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!activeInput) return;
+        // Guard: body-padding shift can move the input away from the tap point,
+        // making the click land on a non-input element. Ignore dismiss clicks
+        // that arrive within 400ms of showing the keyboard.
+        if (Date.now() - vkbShowGuard < 400) return;
+        if (vkbContainer.contains(e.target)) return;
+        if (shouldShowKeyboard(e.target)) return;
+        vkbHide();
+    });
+
+    document.addEventListener('input', function(e) {
+        if (e.target === activeInput && keyboard) {
+            keyboard.setInput(e.target.value);
+        }
+    });
+})();
 </script>
+{% endif %}
 {% endblock %}

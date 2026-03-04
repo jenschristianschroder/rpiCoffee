@@ -32,10 +32,11 @@ _EDITABLE_KEYS = [
     "SENSOR_GYRO_THRESHOLD", "SENSOR_GYRO_RMS_WINDOW_S",
     "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
     "DATA_COLLECT_ENABLED", "DATA_COLLECT_LABEL", "DATA_COLLECT_LABELS",
+    "VIRTUAL_KEYBOARD_ENABLED",
 ]
 
 _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_TRIGGER", "LLM_TTS",
-              "REMOTE_SAVE_ENABLED", "DATA_COLLECT_ENABLED"}
+              "REMOTE_SAVE_ENABLED", "DATA_COLLECT_ENABLED", "VIRTUAL_KEYBOARD_ENABLED"}
 
 
 def _get_signer() -> URLSafeSerializer:
@@ -76,7 +77,7 @@ def _make_session_token() -> str:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "config": config.to_dict()})
 
 
 @router.post("/login")
@@ -88,7 +89,7 @@ async def login_submit(request: Request, password: str = Form(...)):
         logger.info("Admin login successful")
         return response
     logger.warning("Admin login failed – wrong password")
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid password"})
+    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid password", "config": config.to_dict()})
 
 
 @router.get("/logout")
