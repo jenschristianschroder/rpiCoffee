@@ -7,8 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Create directories for models and training data
-RUN mkdir -p /data/models /data/training
+# Note: /data is volume-mounted from the host at runtime (see docker-compose.yml).
+# The app creates /data/models and /data/training on startup if missing.
 
 EXPOSE 8001
 
