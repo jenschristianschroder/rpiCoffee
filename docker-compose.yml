@@ -9,7 +9,7 @@ services:
     ports:
       - "${CLASSIFIER_PORT:-8001}:${CLASSIFIER_PORT:-8001}"
     volumes:
-      - ./data:/data
+      - ./app/data:/data
     environment:
       - MODEL_DIR=/data/models
       - TRAINING_DIR=/data/training

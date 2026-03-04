@@ -41,6 +41,13 @@ app = FastAPI(title="rpicoffee-classifier", version="2.0.0")
 _executor = ThreadPoolExecutor(max_workers=1)
 
 
+@app.on_event("startup")
+async def _ensure_dirs():
+    """Create data directories if they don't exist (covers volume-mount edge cases)."""
+    TRAINING_DIR.mkdir(parents=True, exist_ok=True)
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+
 # ── Request / Response models ────────────────────────────────────
 
 class SensorReading(BaseModel):

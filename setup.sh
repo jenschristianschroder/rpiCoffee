@@ -468,6 +468,10 @@ fi
 # ════════════════════════════════════════════════════════════════
 header "Phase 5 · Docker image builds"
 
+# Ensure host data directories exist (app/data is volume-mounted into containers)
+mkdir -p "$SCRIPT_DIR/app/data/training" "$SCRIPT_DIR/app/data/models" "$SCRIPT_DIR/app/data/audio"
+ok "Data directories created"
+
 build_service() {
     local name="$1" profile="$2"
     info "Building $name..."

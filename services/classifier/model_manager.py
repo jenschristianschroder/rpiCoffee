@@ -182,9 +182,11 @@ class ModelManager:
 
             if not all_features:
                 self.training_status.is_training = False
-                self.training_status.error = "No training data found"
+                msg = f"No training data found in {data_path}"
+                self.training_status.error = msg
                 self.training_status.progress = "Failed"
-                return {"error": "No training data found", "status": "failed"}
+                logger.error(msg)
+                return {"error": msg, "status": "failed"}
 
             # Count samples per class
             from collections import Counter
@@ -194,10 +196,10 @@ class ModelManager:
             self.training_status.progress = f"Found {len(all_labels)} samples across {len(class_counts)} classes"
             logger.info("Training data: %s", dict(class_counts))
 
-            # Need at least 2 classes
+            # Need at least 2 classes for a meaningful classifier
             if len(class_counts) < 2:
                 self.training_status.is_training = False
-                self.training_status.error = f"Need at least 2 classes, found {len(class_counts)}: {list(class_counts.keys())}"
+                self.training_status.error = f"Need at least 2 coffee types to train a classifier. Found {len(class_counts)}: {list(class_counts.keys())}. Record training data for another coffee type and try again."
                 self.training_status.progress = "Failed"
                 return {"error": self.training_status.error, "status": "failed"}
 
