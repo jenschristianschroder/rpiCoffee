@@ -77,7 +77,7 @@ def _make_session_token() -> str:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "config": config.as_dict()})
 
 
 @router.post("/login")
@@ -89,7 +89,7 @@ async def login_submit(request: Request, password: str = Form(...)):
         logger.info("Admin login successful")
         return response
     logger.warning("Admin login failed – wrong password")
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid password"})
+    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid password", "config": config.as_dict()})
 
 
 @router.get("/logout")
