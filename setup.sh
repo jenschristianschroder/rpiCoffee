@@ -409,7 +409,7 @@ elif [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
         _PULL_TRIES=0; _PULL_MAX=30
         echo -n "  Waiting for hailo-ollama to start "
         while ! curl -sf --max-time 2 "${_PULL_URL}/api/tags" > /dev/null 2>&1; do
-            ((_PULL_TRIES++))
+            _PULL_TRIES=$((_PULL_TRIES + 1))
             if (( _PULL_TRIES >= _PULL_MAX )); then
                 echo ""
                 fail "hailo-ollama did not start within ${_PULL_MAX}×2s"
