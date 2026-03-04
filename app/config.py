@@ -75,11 +75,14 @@ _DEFAULTS: dict[str, Any] = {
     "DATA_COLLECT_ENABLED": False,
     "DATA_COLLECT_LABEL": "",
     "DATA_COLLECT_LABELS": "black,espresso,cappuccino",
+    # UI
+    "VIRTUAL_KEYBOARD_ENABLED": False,
 }
 
 _BOOL_KEYS = {"LLM_ENABLED", "TTS_ENABLED", "CLASSIFIER_ENABLED", "SENSOR_AUTO_TRIGGER",
               "SENSOR_ACC_ENABLED", "SENSOR_GYRO_ENABLED", "SENSOR_NEUTRALIZE_GRAVITY",
-              "LLM_TTS", "REMOTE_SAVE_ENABLED", "DATA_COLLECT_ENABLED"}
+              "LLM_TTS", "REMOTE_SAVE_ENABLED", "DATA_COLLECT_ENABLED",
+              "VIRTUAL_KEYBOARD_ENABLED"}
 _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
              "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE"}
@@ -133,6 +136,8 @@ _DESCRIPTIONS: dict[str, str] = {
     "DATA_COLLECT_ENABLED": "Enable data collection mode (records vibration data instead of running the brew pipeline)",
     "DATA_COLLECT_LABEL": "Coffee type label to assign to collected data (e.g. black, espresso, cappuccino)",
     "DATA_COLLECT_LABELS": "Comma-separated list of available coffee type labels for data collection",
+    # UI
+    "VIRTUAL_KEYBOARD_ENABLED": "Show an on-screen virtual keyboard when input fields are focused (for touchscreen kiosk use)",
 }
 
 SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", str(_LOCAL_DATA_DIR))) / "settings.json"
