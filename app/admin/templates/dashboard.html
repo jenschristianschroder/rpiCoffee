@@ -1281,6 +1281,13 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 {% if descriptions.get('LLM_TTS') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_TTS'] }}</small>{% endif %}
                 </div>
             </div>
+            <label>
+                System Message
+                <textarea name="LLM_SYSTEM_MESSAGE" rows="8"
+                          style="font-family:monospace;font-size:0.85rem;"
+                >{{ config['LLM_SYSTEM_MESSAGE'] }}</textarea>
+            </label>
+            {% if descriptions.get('LLM_SYSTEM_MESSAGE') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_SYSTEM_MESSAGE'] }}</small>{% endif %}
         </fieldset>
 
         <fieldset>
