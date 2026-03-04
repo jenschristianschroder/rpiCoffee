@@ -77,9 +77,9 @@
     <form method="post" action="/admin/login" autocomplete="off">
         {% if config.get('VIRTUAL_KEYBOARD_ENABLED', false) %}
         <input type="password" id="password" name="password" placeholder="Enter PIN"
-               inputmode="numeric" required>
+               inputmode="numeric" autocomplete="off" required>
         {% else %}
-        <input type="password" id="password" name="password" placeholder="Enter PIN" inputmode="none" readonly required>
+        <input type="password" id="password" name="password" placeholder="Enter PIN" inputmode="none" autocomplete="off" readonly required>
         <div class="numpad">
             <button type="button" onclick="numPress('1')">1</button>
             <button type="button" onclick="numPress('2')">2</button>
