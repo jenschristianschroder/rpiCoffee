@@ -1,6 +1,12 @@
-# Dataverse Upload Service
+# rpiCoffee — Remote Save Service
 
-A Dockerized FastAPI web service that saves data to Microsoft Dataverse. Designed as the final stage of a data-processing pipeline — it receives processed results via a POST request and persists them as a new Dataverse record.
+Dockerized FastAPI service that persists brew results and raw sensor data to Microsoft Dataverse. Acts as the final stage of the brew pipeline — receives processed results via a POST request and creates a new Dataverse record.
+
+## Overview
+
+After the main app completes a brew (sense → classify → comment → speak), it sends the result to this service for cloud persistence. The service authenticates to Dataverse using an Azure AD service principal and creates a record with the coffee type, confidence score, generated text, and optionally the raw sensor CSV as a file attachment.
+
+This service is **optional** — the brew pipeline runs fine without it.
 
 ## Prerequisites
 
@@ -201,3 +207,35 @@ http://localhost:7000/docs
 ├── .env.example              # Environment variable template
 └── README.md                 # This file
 ```
+
+## Configuration (main app)
+
+These settings control whether and where the main app sends save requests:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REMOTE_SAVE_ENABLED` | `true` | Enable the remote save service |
+| `REMOTE_SAVE_ENDPOINT` | `http://remote-save:7000` | URL of this service |
+
+## Docker Compose
+
+Managed by `docker-compose.yml` under the `remote-save` profile. Requires a `.env` file in `services/remote-save/` with Dataverse credentials:
+
+```bash
+docker compose --profile remote-save up -d
+```
+
+## Development
+
+```bash
+cd services/remote-save
+pip install -r requirements.txt
+# Ensure .env is populated or env vars are exported
+uvicorn app:app --host 0.0.0.0 --port 7000 --reload
+```
+
+## Dependencies
+
+- `fastapi`, `uvicorn` — web framework
+- `httpx` — async HTTP client for Dataverse API
+- `python-dotenv` — `.env` file loading
