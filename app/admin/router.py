@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from config import _DESCRIPTIONS, config
 
 logger = logging.getLogger("rpicoffee.admin")
+
+_DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
+_MODEL_DIR = _DATA_DIR / "models"
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -195,6 +199,30 @@ def _redirect_with_fresh_session(url: str) -> RedirectResponse:
     response.set_cookie(key="session", value=_make_session_token(),
                         httponly=True, samesite="lax", max_age=600)
     return response
+
+
+# ── Model download ───────────────────────────────────────────
+
+@router.get("/download-model")
+async def download_model(session: str | None = Cookie(default=None)):
+    """Download the currently active classifier model (.joblib)."""
+    if not _verify_session(session):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    if not _MODEL_DIR.is_dir():
+        return _redirect_with_fresh_session("/admin/?message=No+models+directory+found")
+
+    model_files = sorted(_MODEL_DIR.glob("coffee_classifier_*.joblib"))
+    if not model_files:
+        return _redirect_with_fresh_session("/admin/?message=No+trained+model+found")
+
+    latest = model_files[-1]
+    logger.info("Serving model download: %s", latest.name)
+    return FileResponse(
+        path=str(latest),
+        filename=latest.name,
+        media_type="application/octet-stream",
+    )
 
 
 # ── Sensor config (JSON API) ────────────────────────────────────
