@@ -900,11 +900,11 @@ document.addEventListener('DOMContentLoaded', refreshTrainingData);
 
     <div class="grid" style="align-items:end;">
         <div>
-            <button id="train-btn" onclick="trainModel()" style="margin-bottom:0;">&#9881; Train Model</button>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <button id="train-btn" onclick="trainModel()" style="margin-bottom:0;">&#9881; Train Model</button>
+                <a id="download-model-btn" href="/admin/download-model" role="button" class="outline" style="margin-bottom:0;display:none;">&#11123; Download Model</a>
+            </div>
             <small style="display:block;margin-top:0.3rem;color:var(--pico-muted-color);">Train on collected training data</small>
-        </div>
-        <div>
-            <a id="download-model-btn" href="/admin/download-model" role="button" class="outline" style="margin-bottom:0;display:none;">&#11123; Download Model</a>
         </div>
         <div>
             <label for="model-upload" style="margin-bottom:0;">Upload Model (.joblib)
