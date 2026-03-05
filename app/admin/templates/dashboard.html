@@ -904,6 +904,9 @@ document.addEventListener('DOMContentLoaded', refreshTrainingData);
             <small style="display:block;margin-top:0.3rem;color:var(--pico-muted-color);">Train on collected training data</small>
         </div>
         <div>
+            <a id="download-model-btn" href="/admin/download-model" role="button" class="outline" style="margin-bottom:0;display:none;">&#11123; Download Model</a>
+        </div>
+        <div>
             <label for="model-upload" style="margin-bottom:0;">Upload Model (.joblib)
                 <input type="file" id="model-upload" accept=".joblib" onchange="uploadModel()">
             </label>
@@ -932,6 +935,8 @@ async function loadModelInfo() {
         }
         if (!data.loaded) {
             el.innerHTML = '<p style="color:var(--pico-muted-color);">No model loaded. Train a model or upload one to get started.</p>';
+            var dlBtn = document.getElementById('download-model-btn');
+            if (dlBtn) dlBtn.style.display = 'none';
             return;
         }
         var html = '<div style="font-size:0.9rem;">';
@@ -941,6 +946,8 @@ async function loadModelInfo() {
         html += '<strong>Trained:</strong> ' + (data.trained_at || 'unknown');
         html += '</div>';
         el.innerHTML = html;
+        var dlBtn = document.getElementById('download-model-btn');
+        if (dlBtn) dlBtn.style.display = '';
     } catch(e) {
         el.innerHTML = '<p style="color:var(--pico-del-color);">Failed to load model info.</p>';
     }
