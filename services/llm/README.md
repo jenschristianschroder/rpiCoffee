@@ -1,9 +1,96 @@
-# Coffee LLM – Fine-tuned Qwen2.5-0.5B for Raspberry Pi
+# rpiCoffee — LLM Service
 
-Fine-tune Qwen2.5-0.5B-Instruct on a coffee commentary dataset, quantise to
+Fine-tuned text generation service that produces witty, sarcastic one-liners about coffee brews. Serves a quantized Qwen2.5-0.5B model via a lightweight HTTP API.
+
+## Overview
+
+The LLM service receives a coffee type and timestamp from the main app and generates a short, humorous commentary. It supports two backends:
+
+| Backend | How it works | When to use |
+|---------|-------------|-------------|
+| **llama-cpp** (default) | CPU inference via `llama-cpp-python` serving a GGUF model | Standard setup — no special hardware needed |
+| **ollama** | Hailo AI HAT+ 2 NPU via `hailo-ollama` | When Hailo accelerator is installed for faster inference |
+
+The model is a Qwen2.5-0.5B-Instruct fine-tuned on 48 coffee commentary samples, quantized to GGUF Q4_K_M (~350 MB). Post-processing corrects 12H→24H time formats, strips hallucinated brand/place references, and cleans output for TTS consumption.
+
+## API Reference
+
+See [API.md](API.md) for the full API reference. Summary:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/generate` | Generate a coffee commentary |
+
+The `/generate` endpoint accepts an optional `system` field to override the system prompt, and a `tts: true` flag to optimize output for speech synthesis.
+
+## Configuration
+
+### Environment variables (runtime)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_BACKEND` | `llama-cpp` | `llama-cpp` for CPU GGUF or `ollama` for Hailo NPU |
+| `LLM_ENDPOINT` | `http://llm:8002` | URL of the llama-cpp server |
+| `LLM_OLLAMA_ENDPOINT` | `http://localhost:8000` | URL of the ollama server |
+| `LLM_MODEL` | `qwen2:1.5b` | Ollama model name (only used when backend=ollama) |
+| `LLM_MAX_TOKENS` | `256` | Maximum tokens to generate per request |
+| `LLM_TEMPERATURE` | `0.7` | Sampling temperature (higher = more creative) |
+| `LLM_TOP_P` | `0.9` | Nucleus sampling threshold |
+| `LLM_SYSTEM_MESSAGE` | *(coffee commentator)* | System prompt controlling tone, style, and output rules |
+| `LLM_KEEP_ALIVE` | `-1` | Ollama keep_alive: -1=forever, 0=unload, or seconds |
+| `LLM_TTS` | `true` | Automatically send generated text to TTS |
+
+### Server flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--model` | `coffee-gguf/coffee-f16.gguf` | Path to GGUF model file |
+| `--port` | `8000` | HTTP port |
+| `--ctx` | `1024` | Context window size |
+| `--threads` | `4` | CPU threads for inference |
+| `--batch` | `64` | Batch size |
+
+### Docker environment
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OMP_NUM_THREADS` | `4` | OpenMP thread count |
+| `THREADS` | `4` | llama-cpp thread count |
+
+## Docker
+
+### Build
+
+```bash
+docker build --platform linux/arm64 -t rpicoffee-llm ./services/llm
+```
+
+### Run
+
+```bash
+docker run -d -p 8002:8002 \
+  -e OMP_NUM_THREADS=4 \
+  -e THREADS=4 \
+  rpicoffee-llm
+```
+
+### Docker Compose
+
+Managed by `docker-compose.yml` under the `llm` profile. Memory limited to 2 GB, 4 CPUs:
+
+```bash
+docker compose --profile llm up -d
+```
+
+---
+
+## Training Pipeline
+
+Fine-tune Qwen2.5-0.5B-Instruct on a coffee commentary dataset, quantize to
 GGUF Q4_K_M, and serve it from a Docker container on a Raspberry Pi.
 
-## Architecture
+### Training architecture
 
 ```
 dataset-coffee.json          ← raw data (48 JSONL samples)
@@ -19,7 +106,7 @@ coffee-gguf/coffee-Q4_K_M.gguf  ← ~350 MB quantised model
 Docker image (ARM64)         ← runs on Raspberry Pi
 ```
 
-## Requirements
+### Requirements
 
 | Step | Hardware | Notes |
 |------|----------|-------|
@@ -194,3 +281,17 @@ docker run -d -p 8000:8000 \
 | `Dockerfile` | Multi-stage ARM64 container |
 | `requirements-train.txt` | Training dependencies (GPU machine) |
 | `requirements-serve.txt` | Serving dependencies (Pi) |
+
+## Development
+
+```bash
+cd services/llm
+pip install -r requirements-serve.txt
+python server.py --model coffee-gguf/coffee-Q4_K_M.gguf --port 8002
+```
+
+## Dependencies
+
+**Serving:** `fastapi`, `uvicorn`, `llama-cpp-python`
+
+**Training:** `transformers`, `peft`, `trl`, `bitsandbytes`, `datasets`, `torch`
