@@ -16,7 +16,7 @@ from config import _DESCRIPTIONS, config
 
 logger = logging.getLogger("rpicoffee.admin")
 
-_DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
+_DATA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent / "data")))
 _MODEL_DIR = _DATA_DIR / "models"
 
 router = APIRouter()
