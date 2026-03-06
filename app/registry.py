@@ -139,15 +139,25 @@ class ServiceRegistry:
     # ── Health checks ────────────────────────────────────────────
 
     async def health_check(self, name: str) -> dict[str, Any]:
-        """Check health of a single service using its manifest-declared endpoint."""
+        """Check health of a single service.
+
+        Uses the manifest-declared health endpoint when available,
+        otherwise falls back to ``GET /health``.
+        """
         reg = self._config.services.get(name)
-        if not reg or not reg.manifest:
-            return {"status": "unknown", "error": "not registered or no manifest"}
-        ep = reg.manifest.endpoints.health
-        url = f"{reg.endpoint}{ep.path}"
+        if not reg:
+            return {"status": "unknown", "error": "not registered"}
+        if reg.manifest and reg.manifest.endpoints.health:
+            ep = reg.manifest.endpoints.health
+            method = ep.method
+            path = ep.path
+        else:
+            method = "GET"
+            path = "/health"
+        url = f"{reg.endpoint}{path}"
         try:
             async with httpx.AsyncClient(timeout=_HEALTH_TIMEOUT) as client:
-                resp = await client.request(ep.method, url)
+                resp = await client.request(method, url)
                 resp.raise_for_status()
                 return resp.json()
         except Exception as exc:
@@ -165,6 +175,17 @@ class ServiceRegistry:
         for name, coro in tasks.items():
             results[name] = await coro
         return results
+
+    async def refresh_all_manifests(self) -> None:
+        """Re-fetch manifests for all services that currently have none."""
+        for name, reg in self._config.services.items():
+            if reg.manifest is not None:
+                continue
+            manifest = await self._fetch_manifest(reg.endpoint)
+            if manifest:
+                reg.manifest = manifest
+                logger.info("Fetched manifest for '%s' on startup", name)
+        self.save()
 
     # ── Pipeline configuration ───────────────────────────────────
 

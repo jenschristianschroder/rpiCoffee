@@ -293,6 +293,8 @@ async def lifespan(app: FastAPI):
     registry.load()
     logger.info("  Registry: %d services, %d pipeline steps",
                 len(registry.list_all()), len(registry.get_pipeline()))
+    # Fetch manifests for any services that don't have one yet
+    await registry.refresh_all_manifests()
 
     # Sensor mode
     sensor_mode = cfg.get("SENSOR_MODE", "mock")
