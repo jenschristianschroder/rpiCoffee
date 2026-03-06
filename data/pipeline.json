@@ -2,25 +2,25 @@
   "services": {
     "classifier": {
       "name": "classifier",
-      "endpoint": "http://classifier:8001",
+      "endpoint": "http://127.0.0.1:8001",
       "manifest": null,
       "enabled": true
     },
     "llm": {
       "name": "llm",
-      "endpoint": "http://llm:8002",
+      "endpoint": "http://127.0.0.1:8002",
       "manifest": null,
       "enabled": true
     },
     "tts": {
       "name": "tts",
-      "endpoint": "http://tts:5050",
+      "endpoint": "http://127.0.0.1:5050",
       "manifest": null,
       "enabled": true
     },
     "remote-save": {
       "name": "remote-save",
-      "endpoint": "http://remote-save:7000",
+      "endpoint": "http://127.0.0.1:7000",
       "manifest": null,
       "enabled": true
     }
