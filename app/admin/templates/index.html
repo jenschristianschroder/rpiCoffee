@@ -181,10 +181,9 @@
     <span class="title">&#9749; rpiCoffee</span>
     <div class="status-dots">
         <div class="status-item"><span class="dot gray" id="s-sensor"></span>sensor</div>
-        <div class="status-item"><span class="dot gray" id="s-classifier"></span>classifier</div>
-        <div class="status-item"><span class="dot gray" id="s-llm"></span>text gen</div>
-        <div class="status-item"><span class="dot gray" id="s-tts"></span>TTS</div>
-        <div class="status-item"><span class="dot gray" id="s-remote_save"></span>save</div>
+        <div id="registry-dots" style="display:contents;">
+            <!-- Populated dynamically from service registry -->
+        </div>
     </div>
     <div class="right-group">
         <a href="/admin/" class="topbar-settings" title="Admin Settings">&#9881;</a>
@@ -244,7 +243,26 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ── Service health ────────────────────────────────────────────
+let _kioskRegistryLoaded = false;
+
+async function loadKioskRegistry() {
+    try {
+        const r = await fetch('/api/registry/services');
+        const services = await r.json();
+        const container = document.getElementById('registry-dots');
+        if (!container) return;
+        let html = '';
+        services.forEach(function(svc) {
+            const svcId = svc.name.replace(/-/g, '_');
+            html += '<div class="status-item"><span class="dot gray" id="s-' + svcId + '"></span>' + svc.name + '</div>';
+        });
+        container.innerHTML = html;
+        _kioskRegistryLoaded = true;
+    } catch (e) { /* ignore */ }
+}
+
 async function checkServices() {
+    if (!_kioskRegistryLoaded) await loadKioskRegistry();
     try {
         const r = await fetch('/api/services/status');
         const data = await r.json();
@@ -257,6 +275,21 @@ async function checkServices() {
             } else {
                 if (item) item.style.display = '';
                 dot.className = info.healthy ? 'dot green' : 'dot red';
+            }
+        }
+        // Also check registry health for dynamic services
+        const rh = await fetch('/api/registry/health');
+        const healthData = await rh.json();
+        for (const [name, info] of Object.entries(healthData)) {
+            const svcId = name.replace(/-/g, '_');
+            const dot = document.getElementById('s-' + svcId);
+            if (!dot) continue;
+            const item = dot.closest('.status-item');
+            if (info.status === 'unreachable' || info.error) {
+                dot.className = 'dot red';
+            } else {
+                if (item) item.style.display = '';
+                dot.className = 'dot green';
             }
         }
     } catch (e) { /* ignore */ }
