@@ -1,0 +1,71 @@
+{
+  "services": {
+    "classifier": {
+      "name": "classifier",
+      "endpoint": "http://classifier:8001",
+      "manifest": null,
+      "enabled": true
+    },
+    "llm": {
+      "name": "llm",
+      "endpoint": "http://llm:8002",
+      "manifest": null,
+      "enabled": true
+    },
+    "tts": {
+      "name": "tts",
+      "endpoint": "http://tts:5050",
+      "manifest": null,
+      "enabled": true
+    },
+    "remote-save": {
+      "name": "remote-save",
+      "endpoint": "http://remote-save:7000",
+      "manifest": null,
+      "enabled": true
+    }
+  },
+  "pipeline": [
+    {
+      "service": "classifier",
+      "input_map": {
+        "sensor_data": "$sensor.data"
+      },
+      "on_failure": "skip",
+      "retry_count": 1,
+      "enabled": true
+    },
+    {
+      "service": "llm",
+      "input_map": {
+        "coffee_label": "$classifier.label",
+        "timestamp": "$sensor.timestamp"
+      },
+      "on_failure": "skip",
+      "retry_count": 1,
+      "enabled": true
+    },
+    {
+      "service": "tts",
+      "input_map": {
+        "text": "$llm.response"
+      },
+      "on_failure": "skip",
+      "retry_count": 1,
+      "enabled": true
+    },
+    {
+      "service": "remote-save",
+      "input_map": {
+        "name": "$classifier.label",
+        "coffee_type": "$classifier.label",
+        "confidence": "$classifier.confidence",
+        "text": "$llm.response",
+        "sensor_data": "$sensor.data"
+      },
+      "on_failure": "skip",
+      "retry_count": 1,
+      "enabled": true
+    }
+  ]
+}

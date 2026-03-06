@@ -18,7 +18,9 @@ from fastapi.templating import Jinja2Templates
 
 from config import config
 from admin.router import router as admin_router
+from api.registry_routes import router as registry_router
 from pipeline import run_pipeline, run_pipeline_streaming
+from registry import registry
 from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
 from services.ollama_client import OllamaClient
@@ -287,6 +289,11 @@ async def lifespan(app: FastAPI):
         endpoint = cfg.get(f"{svc}_ENDPOINT", "n/a")
         logger.info("  %s: %s (%s)", svc, "enabled" if enabled else "disabled", endpoint)
 
+    # Load service registry / pipeline config
+    registry.load()
+    logger.info("  Registry: %d services, %d pipeline steps",
+                len(registry.list_all()), len(registry.get_pipeline()))
+
     # Sensor mode
     sensor_mode = cfg.get("SENSOR_MODE", "mock")
     logger.info("  SENSOR: mode=%s", sensor_mode)
@@ -315,6 +322,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "admin" / "tem
 
 # Routers
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
+app.include_router(registry_router)
 
 # Serve generated audio files
 app.mount("/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
