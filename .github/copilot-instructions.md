@@ -22,6 +22,9 @@ rpiCoffee/
 │   ├── admin/                  # Admin panel (routes + Jinja2 templates)
 │   ├── sensor/                 # Sensor abstraction (mock, picoquake, serial)
 │   └── services/               # HTTP clients for backend microservices
+├── docs/                       # Documentation
+│   ├── setup-raspberry-pi.md   # Raspberry Pi installation & operations guide
+│   └── local-development.md    # Local development & contribution guide
 ├── services/
 │   ├── classifier/             # ML coffee classifier (Docker, scikit-learn :8001)
 │   ├── llm/                    # Fine-tuned LLM inference server (Docker, llama-cpp :8002)
@@ -106,26 +109,23 @@ Always code against the shared sensor interface, not concrete reader classes.
 
 ## Development Workflow
 
-### Local development (Windows / macOS, no hardware)
+See the dedicated guides for full details:
+
+- **[Local Development](../docs/local-development.md)** — Windows/macOS setup, mock sensor, testing, contribution guidelines
+- **[Setup on Raspberry Pi](../docs/setup-raspberry-pi.md)** — Installation, configuration, management scripts, systemd
+
+### Quick reference
 
 ```bash
-python -m venv .venv && .venv\Scripts\activate   # Windows
+# Local development (Windows)
+python -m venv .venv && .venv\Scripts\activate
 pip install -r app/requirements.txt
 pip install -r services/classifier/requirements.txt
-
-# Start everything (mock sensor, no TTS)
-run-local.bat
+docker compose --profile classifier --profile llm up -d
+run-app-local.bat
 ```
 
 Set `SENSOR_MODE=mock` (the default) to replay CSV samples without hardware.
-
-### Raspberry Pi
-
-```bash
-./setup.sh    # Interactive installer (phases 0–8)
-./start.sh    # Start Docker services + native app
-./status.sh   # Health-check dashboard
-```
 
 ### Docker Compose profiles
 
