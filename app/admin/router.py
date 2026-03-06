@@ -23,6 +23,8 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Keys that can be edited from the admin UI
+# NOTE: Service endpoint/enabled keys are kept for backward compatibility
+# but are now primarily managed through the service registry.
 _EDITABLE_KEYS = [
     "LLM_ENABLED", "LLM_ENDPOINT", "LLM_OLLAMA_ENDPOINT",
     "TTS_ENABLED", "TTS_ENDPOINT",
