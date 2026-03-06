@@ -28,6 +28,7 @@ rpiCoffee/
 ├── services/
 │   ├── classifier/             # ML coffee classifier (Docker, scikit-learn :8001)
 │   ├── llm/                    # Fine-tuned LLM inference server (Docker, llama-cpp :8002)
+│   ├── llm-ollama/             # Ollama proxy service (Docker, Hailo HAT+ :8003)
 │   ├── tts/                    # Piper TTS server (Docker, :5050)
 │   └── remote-save/            # Microsoft Dataverse upload service (Docker, :7000)
 ├── data/                       # Sample CSVs, settings, training data, audio output
@@ -135,7 +136,7 @@ Services are opt-in via `--profile`:
 docker compose --profile classifier --profile llm --profile tts up -d
 ```
 
-Available profiles: `classifier`, `llm`, `tts`, `remote-save`.
+Available profiles: `classifier`, `llm`, `llm-ollama`, `tts`, `remote-save`.
 
 ## Adding a New Backend Service
 

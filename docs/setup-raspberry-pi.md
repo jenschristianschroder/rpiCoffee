@@ -108,7 +108,8 @@ rpiCoffee uses a three-layer configuration system (highest priority last):
 | `LLM_ENABLED` | `true` | Enable the LLM text generation service |
 | `LLM_BACKEND` | `llama-cpp` | `llama-cpp` for CPU or `ollama` for Hailo AI HAT+ |
 | `LLM_ENDPOINT` | `http://llm:8002` | LLM service URL (llama-cpp) |
-| `LLM_OLLAMA_ENDPOINT` | `http://localhost:8000` | Ollama endpoint (Hailo) |
+| `LLM_OLLAMA_SERVICE_ENDPOINT` | `http://llm-ollama:8003` | LLM Ollama proxy service URL |
+| `LLM_OLLAMA_ENDPOINT` | `http://localhost:8000` | Raw Ollama API endpoint (hailo-ollama) |
 | `TTS_ENABLED` | `true` | Enable text-to-speech |
 | `TTS_ENDPOINT` | `http://tts:5050` | TTS service URL |
 | `REMOTE_SAVE_ENABLED` | `true` | Enable Dataverse persistence |
@@ -236,10 +237,9 @@ Set these in your `.env`:
 ```bash
 LLM_BACKEND=ollama
 LLM_OLLAMA_ENDPOINT=http://localhost:8000
-LLM_MODEL=qwen2:1.5b
 ```
 
-When using the Ollama backend, the LLM Docker container is **not** built or started — inference runs directly on the Hailo NPU via `hailo-ollama`.
+When using the Ollama backend, also start the `llm-ollama` Docker Compose profile which runs the proxy service. The LLM Docker container (`llm` profile) is **not** needed — inference runs directly on the Hailo NPU via `hailo-ollama`.
 
 ## Docker Compose Profiles
 
@@ -249,7 +249,7 @@ Backend services are opt-in via Docker Compose profiles. Only enabled services a
 # Start specific services
 docker compose --profile classifier --profile llm --profile tts up -d
 
-# Available profiles: classifier, llm, tts, remote-save
+# Available profiles: classifier, llm, llm-ollama, tts, remote-save
 ```
 
 All containers share the `coffee-net` bridge network and use an `unless-stopped` restart policy.

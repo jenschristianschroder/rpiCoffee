@@ -4,12 +4,9 @@ Fine-tuned text generation service that produces witty, sarcastic one-liners abo
 
 ## Overview
 
-The LLM service receives a coffee type and timestamp from the main app and generates a short, humorous commentary. It supports two backends:
+The LLM service receives a coffee type and timestamp from the main app and generates a short, humorous commentary using CPU inference via `llama-cpp-python` serving a quantized GGUF model.
 
-| Backend | How it works | When to use |
-|---------|-------------|-------------|
-| **llama-cpp** (default) | CPU inference via `llama-cpp-python` serving a GGUF model | Standard setup — no special hardware needed |
-| **ollama** | Hailo AI HAT+ 2 NPU via `hailo-ollama` | When Hailo accelerator is installed for faster inference |
+> **Note:** For Hailo AI HAT+ NPU inference via Ollama, see the separate [`llm-ollama`](../llm-ollama/README.md) service.
 
 The model is a Qwen2.5-0.5B-Instruct fine-tuned on 48 coffee commentary samples, quantized to GGUF Q4_K_M (~350 MB). Post-processing corrects 12H→24H time formats, strips hallucinated brand/place references, and cleans output for TTS consumption.
 
@@ -32,15 +29,10 @@ The `/generate` endpoint accepts an optional `system` field to override the syst
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_BACKEND` | `llama-cpp` | `llama-cpp` for CPU GGUF or `ollama` for Hailo NPU |
-| `LLM_ENDPOINT` | `http://llm:8002` | URL of the llama-cpp server |
-| `LLM_OLLAMA_ENDPOINT` | `http://localhost:8000` | URL of the ollama server |
-| `LLM_MODEL` | `qwen2:1.5b` | Ollama model name (only used when backend=ollama) |
 | `LLM_MAX_TOKENS` | `256` | Maximum tokens to generate per request |
 | `LLM_TEMPERATURE` | `0.7` | Sampling temperature (higher = more creative) |
 | `LLM_TOP_P` | `0.9` | Nucleus sampling threshold |
 | `LLM_SYSTEM_MESSAGE` | *(coffee commentator)* | System prompt controlling tone, style, and output rules |
-| `LLM_KEEP_ALIVE` | `-1` | Ollama keep_alive: -1=forever, 0=unload, or seconds |
 | `LLM_TTS` | `true` | Automatically send generated text to TTS |
 
 ### Server flags

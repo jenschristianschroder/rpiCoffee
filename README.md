@@ -34,7 +34,8 @@ graph TB
     sensor -- "USB" --> app
     app -- "POST /classify" --> classifier
     app -- "POST /generate" --> llm
-    app -. "POST /generate<br/>(alternative)" .-> hailo
+    app -- "POST /generate" --> llm_ollama["LLM Ollama<br/>Ollama proxy :8003"]
+    llm_ollama -- "POST /api/generate" --> hailo
     app -- "POST /synthesize" --> tts
     app -- "POST /save" --> remote
     tts -- "WAV audio" --> speaker
@@ -67,7 +68,8 @@ An alternative LLM backend uses the **Hailo AI HAT+ 2** NPU accelerator via `hai
 |---------|------|-------------|--------|
 | **Main App** | 8080 | FastAPI orchestrator, kiosk UI, admin panel, sensor management | [app/README.md](app/README.md) |
 | **Classifier** | 8001 | scikit-learn RandomForest coffee type classifier | [services/classifier/README.md](services/classifier/README.md) |
-| **LLM** | 8002 | Fine-tuned Qwen2.5-0.5B GGUF inference server | [services/llm/README.md](services/llm/README.md) |
+| **LLM** | 8002 | Fine-tuned Qwen2.5-0.5B GGUF inference server (llama-cpp) | [services/llm/README.md](services/llm/README.md) |
+| **LLM Ollama** | 8003 | Ollama proxy for Hailo AI HAT+ 2 NPU | [services/llm-ollama/README.md](services/llm-ollama/README.md) |
 | **TTS** | 5050 | Piper TTS offline speech synthesis | [services/tts/README.md](services/tts/README.md) |
 | **Remote Save** | 7000 | Microsoft Dataverse persistence service | [services/remote-save/README.md](services/remote-save/README.md) |
 
@@ -87,7 +89,8 @@ rpiCoffee/
 │   └── local-development.md    # Local development & contribution guide
 ├── services/
 │   ├── classifier/             # ML coffee classifier (Docker)
-│   ├── llm/                    # Fine-tuned LLM server (Docker)
+│   ├── llm/                    # Fine-tuned LLM server (Docker, llama-cpp)
+│   ├── llm-ollama/             # Ollama proxy service (Docker, Hailo HAT+)
 │   ├── tts/                    # Piper TTS server (Docker)
 │   └── remote-save/            # Dataverse upload service (Docker)
 ├── data/                       # Sample CSVs, settings, training data, audio
