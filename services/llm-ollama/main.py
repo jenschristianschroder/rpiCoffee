@@ -1,22 +1,19 @@
 """
-Lightweight inference server for the quantised GGUF coffee model.
+Ollama proxy service for Hailo AI HAT+ 2 / hailo-ollama.
 
-Uses llama-cpp-python (C++ backend with ARM NEON on Pi) served via FastAPI.
+Proxies text generation requests to an Ollama-compatible API, applies
+post-processing (12H→24H time correction, place/brand stripping, TTS
+optimisation), and returns a normalised response.
 
 Endpoints:
-    POST /generate   {"prompt": "Write a statement about Espresso at 2026-03-01T08:00:00"}
-    GET  /health
-    GET  /settings
+    POST  /generate   {"prompt": "Write a statement about Espresso at 2026-03-01T08:00:00"}
+    GET   /health
+    GET   /settings
     PATCH /settings
-
-Run:
-    python server.py                              # defaults
-    python server.py --model coffee-gguf/coffee-Q4_K_M.gguf --port 8080
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
@@ -27,38 +24,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from llama_cpp import Llama
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
-logger = logging.getLogger("llm")
-
-SYSTEM_PROMPT = (
-    "You are a witty coffee commentator. Given a coffee type and time, "
-    "write a short, humorous observation about drinking that coffee at that time. "
-    "Do not mention any specific places, brands, companies, or locations."
-)
-
-# Tuned for Raspberry Pi: small context, limited threads
-DEFAULT_MODEL = "coffee-gguf/coffee-f16.gguf"
-DEFAULT_CTX = 1024
-DEFAULT_THREADS = 4      # Pi 4 has 4 cores; Pi 5 also 4
-DEFAULT_BATCH = 64       # smaller batch = less memory pressure
+logger = logging.getLogger("llm-ollama")
 
 SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
-
-model: Llama = None  # type: ignore
 
 # ── Runtime settings (mutable) ───────────────────────────────────
 _runtime: dict[str, Any] = {}
 
 _SETTINGS_REGISTRY: list[dict[str, str]] = [
-    {"key": "MODEL_PATH", "name": "Model Path", "description": "Path to the GGUF model file", "type": "str"},
-    {"key": "CTX_SIZE", "name": "Context Size", "description": "Model context window size in tokens", "type": "int"},
-    {"key": "THREADS", "name": "Threads", "description": "Number of CPU threads for inference", "type": "int"},
-    {"key": "BATCH_SIZE", "name": "Batch Size", "description": "Batch size for prompt evaluation", "type": "int"},
+    {"key": "OLLAMA_ENDPOINT", "name": "Ollama Endpoint", "description": "URL of the upstream Ollama API server", "type": "str"},
+    {"key": "OLLAMA_MODEL", "name": "Model", "description": "Ollama model name to use for generation", "type": "str"},
+    {"key": "OLLAMA_KEEP_ALIVE", "name": "Keep Alive", "description": "Ollama keep_alive: -1 = keep model loaded forever, 0 = unload immediately, or seconds", "type": "int"},
     {"key": "LLM_MAX_TOKENS", "name": "Max Tokens", "description": "Maximum number of tokens to generate per request", "type": "int"},
     {"key": "LLM_TEMPERATURE", "name": "Temperature", "description": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)", "type": "float"},
     {"key": "LLM_TOP_P", "name": "Top-P", "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)", "type": "float"},
@@ -66,18 +48,23 @@ _SETTINGS_REGISTRY: list[dict[str, str]] = [
     {"key": "LLM_SYSTEM_MESSAGE", "name": "System Message", "description": "System prompt sent to the model to control tone, style, and output format", "type": "str"},
 ]
 
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a witty coffee commentator. Given a coffee type and time, "
+    "write a short, humorous observation about drinking that coffee at that time. "
+    "Do not mention any specific places, brands, companies, or locations."
+)
+
 
 def _load_settings() -> None:
     """Load persisted settings from disk, falling back to env/defaults."""
-    _runtime["MODEL_PATH"] = os.environ.get("MODEL_PATH", DEFAULT_MODEL)
-    _runtime["CTX_SIZE"] = int(os.environ.get("CTX", str(DEFAULT_CTX)))
-    _runtime["THREADS"] = int(os.environ.get("THREADS", str(DEFAULT_THREADS)))
-    _runtime["BATCH_SIZE"] = int(os.environ.get("BATCH", str(DEFAULT_BATCH)))
+    _runtime["OLLAMA_ENDPOINT"] = os.environ.get("OLLAMA_ENDPOINT", "http://localhost:8000")
+    _runtime["OLLAMA_MODEL"] = os.environ.get("OLLAMA_MODEL", "qwen2:1.5b")
+    _runtime["OLLAMA_KEEP_ALIVE"] = int(os.environ.get("OLLAMA_KEEP_ALIVE", "-1"))
     _runtime["LLM_MAX_TOKENS"] = int(os.environ.get("LLM_MAX_TOKENS", "256"))
     _runtime["LLM_TEMPERATURE"] = float(os.environ.get("LLM_TEMPERATURE", "0.7"))
     _runtime["LLM_TOP_P"] = float(os.environ.get("LLM_TOP_P", "0.9"))
     _runtime["LLM_TTS"] = os.environ.get("LLM_TTS", "true").lower() in ("true", "1", "yes")
-    _runtime["LLM_SYSTEM_MESSAGE"] = os.environ.get("LLM_SYSTEM_MESSAGE", SYSTEM_PROMPT)
+    _runtime["LLM_SYSTEM_MESSAGE"] = os.environ.get("LLM_SYSTEM_MESSAGE", DEFAULT_SYSTEM_PROMPT)
 
     if SETTINGS_PATH.exists():
         try:
@@ -105,38 +92,14 @@ def _save_settings() -> None:
     SETTINGS_PATH.write_text(json.dumps(_runtime, indent=2))
 
 
-# Regex to find ISO timestamps in prompts
+# ── Post-processing helpers ──────────────────────────────────────
+
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2})?")
 
-
-def parse_timestamp(user_msg: str) -> tuple[str, str, str]:
-    """Extract metadata from an ISO timestamp in the prompt.
-    Returns (day_name, time_24h, stripped_iso) or ("", "", "") if none found."""
-    m = _TS_RE.search(user_msg)
-    if m:
-        try:
-            dt = datetime.fromisoformat(m.group())
-            return dt.strftime("%A"), dt.strftime("%H:%M"), m.group()
-        except ValueError:
-            pass
-    return "", "", ""
-
-
-# Regex patterns for 12-hour times in model output
 _12H_RE = re.compile(
     r"\b(1[0-2]|0?[1-9])(?:[:.]([0-5]\d))?\s*(am|pm)\b", re.IGNORECASE
 )
 
-
-def postprocess(text: str, day_name: str, time_24h: str) -> str:
-    """Replace 12-hour times with the correct 24H time and strip places/brands."""
-    if time_24h:
-        text = _12H_RE.sub(time_24h, text)
-    text = _strip_places(text)
-    return text
-
-
-# Patterns that match "at <Place>", "at the <Place>", or standalone brand/place names
 _PLACES = [
     "Swiss National Bank", "Swiss national bank",
     "Starbucks", "Costa", "Dunkin", "Peet's", "Tim Hortons",
@@ -152,23 +115,38 @@ _PLACE_BARE_RE = re.compile(
 )
 
 
-def _strip_places(text: str) -> str:
-    """Remove place/brand references from text."""
+def _parse_timestamp(user_msg: str) -> tuple[str, str]:
+    """Extract weekday name and 24H time from an ISO timestamp in the prompt."""
+    m = _TS_RE.search(user_msg)
+    if m:
+        try:
+            dt = datetime.fromisoformat(m.group())
+            return dt.strftime("%A"), dt.strftime("%H:%M")
+        except ValueError:
+            pass
+    return "", ""
+
+
+def _postprocess(text: str, day_name: str, time_24h: str) -> str:
+    """Replace 12H times with correct 24H time and strip hallucinated places."""
+    if time_24h:
+        text = _12H_RE.sub(time_24h, text)
     text = _PLACE_AT_RE.sub("", text)
     text = _PLACE_BARE_RE.sub("", text)
     text = re.sub(r"\s{2,}", " ", text).strip()
     return text
 
 
-def tts_clean(text: str) -> str:
-    """Optimize text for natural text-to-speech output."""
-    def _expand_time(m):
+def _tts_clean(text: str) -> str:
+    """Optimise text for natural text-to-speech output."""
+    def _expand_time(m: re.Match) -> str:
         h, mn = int(m.group(1)), m.group(2)
         if mn == "00":
             return f"{h} o'clock"
         return f"{h} {mn}"
+
     text = re.sub(r"\b(\d{1,2}):(\d{2})\b", _expand_time, text)
-    text = text.replace('"', '').replace("'", "")
+    text = text.replace('"', "").replace("'", "")
     text = re.sub(r"\s*\(", ", ", text)
     text = re.sub(r"\)\s*", ", ", text)
     text = text.replace("—", ", ").replace("--", ", ")
@@ -176,16 +154,6 @@ def tts_clean(text: str) -> str:
     text = re.sub(r"\s{2,}", " ", text)
     text = text.strip().strip(",").strip()
     return text
-
-
-def build_prompt(user_msg: str, system: str | None = None) -> str:
-    """Build a Qwen2.5 chat-template prompt."""
-    sys_msg = system if system else SYSTEM_PROMPT
-    return (
-        f"<|im_start|>system\n{sys_msg}<|im_end|>\n"
-        f"<|im_start|>user\n{user_msg}<|im_end|>\n"
-        f"<|im_start|>assistant\n"
-    )
 
 
 # ── Request / Response models ────────────────────────────────────
@@ -203,35 +171,85 @@ class SettingsUpdate(BaseModel):
     settings: dict[str, Any]
 
 
+# ── Ollama proxy call ────────────────────────────────────────────
+
+async def _ollama_generate(
+    prompt: str,
+    *,
+    system: str,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    keep_alive: int,
+) -> tuple[str, dict[str, Any]]:
+    """Call Ollama /api/generate (streaming NDJSON) and return (text, metadata)."""
+    endpoint = _runtime["OLLAMA_ENDPOINT"]
+    model = _runtime["OLLAMA_MODEL"]
+
+    payload: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "system": system,
+        "stream": True,
+        "keep_alive": keep_alive,
+        "options": {
+            "temperature": temperature,
+            "top_p": top_p,
+            "num_predict": max_tokens,
+        },
+    }
+
+    full_response = ""
+    metadata: dict[str, Any] = {}
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        async with client.stream(
+            "POST",
+            f"{endpoint}/api/generate",
+            json=payload,
+        ) as r:
+            r.raise_for_status()
+            async for line in r.aiter_lines():
+                if not line:
+                    continue
+                chunk = json.loads(line)
+                token = chunk.get("response", "")
+                full_response += token
+                if chunk.get("done"):
+                    metadata = chunk
+
+    return full_response, metadata
+
+
 # ── App lifecycle ────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model
     _load_settings()
-    logger.info("Loading model: %s", _runtime["MODEL_PATH"])
-    logger.info("  context=%s  threads=%s  batch=%s",
-                _runtime["CTX_SIZE"], _runtime["THREADS"], _runtime["BATCH_SIZE"])
-    model = Llama(
-        model_path=_runtime["MODEL_PATH"],
-        n_ctx=_runtime["CTX_SIZE"],
-        n_threads=_runtime["THREADS"],
-        n_batch=_runtime["BATCH_SIZE"],
-        last_n_tokens_size=32,
-        verbose=False,
-    )
-    logger.info("Model loaded.")
+    logger.info("Ollama proxy started — upstream: %s  model: %s",
+                _runtime["OLLAMA_ENDPOINT"], _runtime["OLLAMA_MODEL"])
     yield
 
 
-app = FastAPI(title="rpicoffee-llm", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="rpicoffee-llm-ollama", version="1.0.0", lifespan=lifespan)
 
 
 # ── Endpoints ────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    """Check own status and upstream Ollama connectivity."""
+    endpoint = _runtime["OLLAMA_ENDPOINT"]
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{endpoint}/api/tags")
+            r.raise_for_status()
+            data = r.json()
+            models = [m["name"] for m in data.get("models", [])]
+            return {"status": "ok", "ollama": "connected", "models": models}
+    except Exception as exc:
+        logger.warning("Ollama upstream health check failed: %s", exc)
+        return {"status": "degraded", "ollama": "unreachable", "error": str(exc)}
 
 
 @app.post("/generate")
@@ -239,39 +257,50 @@ async def generate(req: GenerateRequest):
     if not req.prompt:
         raise HTTPException(status_code=400, detail="prompt is required")
 
-    # Resolve from runtime defaults when request omits a value
     max_tokens = req.max_tokens if req.max_tokens is not None else _runtime["LLM_MAX_TOKENS"]
     temperature = req.temperature if req.temperature is not None else _runtime["LLM_TEMPERATURE"]
     top_p = req.top_p if req.top_p is not None else _runtime["LLM_TOP_P"]
     tts = req.tts if req.tts is not None else _runtime["LLM_TTS"]
     system = req.system if req.system is not None else _runtime["LLM_SYSTEM_MESSAGE"]
 
-    day_name, time_24h, _ = parse_timestamp(req.prompt)
-    prompt = build_prompt(req.prompt, system=system)
-    model.reset()
     t0 = time.perf_counter()
-    result = model(
-        prompt,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        stop=["<|im_end|>", "<|im_start|>"],
-        echo=False,
-        repeat_penalty=1.15,
-    )
+
+    try:
+        raw_text, metadata = await _ollama_generate(
+            req.prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            keep_alive=_runtime["OLLAMA_KEEP_ALIVE"],
+        )
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail=f"Could not connect to Ollama at {_runtime['OLLAMA_ENDPOINT']}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Ollama request timed out")
+    except Exception as exc:
+        logger.error("Ollama generate failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
     elapsed = time.perf_counter() - t0
 
-    text = result["choices"][0]["text"].strip()
-    text = postprocess(text, day_name, time_24h)
+    # Token stats from Ollama metadata
+    eval_count = metadata.get("eval_count", 0)
+    eval_ns = metadata.get("eval_duration", 0)
+    tokens_per_s = (eval_count / (eval_ns / 1e9)) if eval_ns else 0
+
+    # Post-process
+    day_name, time_24h = _parse_timestamp(req.prompt)
+    text = raw_text.strip()
+    text = _postprocess(text, day_name, time_24h)
     if tts:
-        text = tts_clean(text)
-    tokens = result["usage"]["completion_tokens"]
+        text = _tts_clean(text)
 
     return {
         "response": text,
-        "tokens": tokens,
+        "tokens": eval_count,
         "elapsed_s": round(elapsed, 2),
-        "tokens_per_s": round(tokens / elapsed, 1) if elapsed > 0 else 0,
+        "tokens_per_s": round(tokens_per_s, 1),
     }
 
 
@@ -306,28 +335,5 @@ async def update_settings(req: SettingsUpdate):
 
 # ── CLI entry point ──────────────────────────────────────────────
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--model", default=None)
-    p.add_argument("--host", default="0.0.0.0")
-    p.add_argument("--port", type=int, default=8002)
-    p.add_argument("--ctx", type=int, default=None)
-    p.add_argument("--threads", type=int, default=None)
-    p.add_argument("--batch", type=int, default=None)
-    args = p.parse_args()
-
-    # CLI args override env vars for backward compatibility
-    if args.model:
-        os.environ["MODEL_PATH"] = args.model
-    if args.ctx:
-        os.environ["CTX"] = str(args.ctx)
-    if args.threads:
-        os.environ["THREADS"] = str(args.threads)
-    if args.batch:
-        os.environ["BATCH"] = str(args.batch)
-
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
-
-
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=8003, log_level="info")

@@ -21,6 +21,7 @@ from admin.router import router as admin_router
 from pipeline import run_pipeline, run_pipeline_streaming
 from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
+from services.ollama_client import OllamaClient
 from services.tts_client import TTSClient
 from services.remote_save_client import RemoteSaveClient
 from services import training_data
@@ -455,7 +456,10 @@ async def services_status():
         statuses["classifier"] = {"enabled": False}
 
     if config.LLM_ENABLED:
-        statuses["llm"] = await LLMClient.health()
+        if config.LLM_BACKEND == "ollama":
+            statuses["llm"] = await OllamaClient.health()
+        else:
+            statuses["llm"] = await LLMClient.health()
     else:
         statuses["llm"] = {"enabled": False}
 
@@ -487,6 +491,7 @@ async def services_status():
 _SERVICE_CLIENTS = {
     "classifier": ClassifierClient,
     "llm": LLMClient,
+    "llm-ollama": OllamaClient,
     "tts": TTSClient,
     "remote-save": RemoteSaveClient,
 }

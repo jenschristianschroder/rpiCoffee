@@ -27,6 +27,7 @@ from sensor.mock import mock_sensor
 from sensor.reader import read_sensor, read_sensor_streaming
 from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
+from services.ollama_client import OllamaClient
 from services.tts_client import TTSClient
 from services.remote_save_client import RemoteSaveClient
 from services.training_data import save_recording
@@ -151,7 +152,8 @@ async def run_pipeline(
     if result["label"] is not None:
         if on_progress:
             on_progress(f"Generating text for {result['label']}…")
-        llm_result = await LLMClient.generate(
+        _llm = OllamaClient if config.LLM_BACKEND == "ollama" else LLMClient
+        llm_result = await _llm.generate(
             coffee_label=result["label"],
             timestamp=now,
         )
@@ -309,7 +311,8 @@ async def run_pipeline_streaming(
     if result["label"] is not None:
         yield _sse("status", {"message": f"Generating text for {result['label']}…"})
 
-        llm_result = await LLMClient.generate(
+        _llm = OllamaClient if config.LLM_BACKEND == "ollama" else LLMClient
+        llm_result = await _llm.generate(
             coffee_label=result["label"],
             timestamp=now,
         )

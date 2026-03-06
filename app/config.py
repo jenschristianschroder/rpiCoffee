@@ -35,7 +35,8 @@ _DEFAULTS: dict[str, Any] = {
     "LLM_ENABLED": True,
     "LLM_BACKEND": "llama-cpp",  # "llama-cpp" or "ollama" (Hailo AI HAT+)
     "LLM_ENDPOINT": "http://llm:8002",
-    "LLM_OLLAMA_ENDPOINT": "http://localhost:8000",  # Default endpoint for Ollama / hailo-ollama
+    "LLM_OLLAMA_SERVICE_ENDPOINT": "http://llm-ollama:8003",  # llm-ollama proxy service
+    "LLM_OLLAMA_ENDPOINT": "http://localhost:8000",  # Raw Ollama API (hailo-ollama systemd service)
     "LLM_MODEL": "qwen2:1.5b",  # Ollama model name (only used when LLM_BACKEND=ollama)
     "TTS_ENABLED": True,
     "TTS_ENDPOINT": "http://tts:5050",
@@ -144,8 +145,9 @@ _DESCRIPTIONS: dict[str, str] = {
     # LLM
     "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
     "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+ / hailo-ollama",
-    "LLM_ENDPOINT": "URL of the LLM service (llama-cpp default: port 8002, ollama default: port 8000)",
-    "LLM_OLLAMA_ENDPOINT": "Default Ollama endpoint used when switching backend to ollama (port 8000)",
+    "LLM_ENDPOINT": "URL of the llama-cpp LLM service (default: port 8002)",
+    "LLM_OLLAMA_SERVICE_ENDPOINT": "URL of the llm-ollama proxy service (default: port 8003)",
+    "LLM_OLLAMA_ENDPOINT": "URL of the raw Ollama API used by hailo-ollama systemd manager (port 8000)",
     "LLM_MODEL": "Ollama model name (only used when LLM_BACKEND=ollama)",
     "LLM_MAX_TOKENS": "Maximum number of tokens the LLM may generate per request",
     "LLM_TEMPERATURE": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)",

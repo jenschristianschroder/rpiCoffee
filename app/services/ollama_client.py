@@ -1,7 +1,7 @@
-"""HTTP client for the LLM text generation service (llama-cpp backend).
+"""HTTP client for the LLM Ollama proxy service.
 
-Talks to the ``llm`` microservice which runs llama-cpp-python GGUF
-inference.  For the Ollama backend, see ``ollama_client.py``.
+Talks to the ``llm-ollama`` microservice which proxies requests to an
+upstream Ollama API and applies post-processing server-side.
 """
 
 from __future__ import annotations
@@ -14,22 +14,22 @@ import httpx
 
 from config import config
 
-logger = logging.getLogger("rpicoffee.llm_client")
+logger = logging.getLogger("rpicoffee.ollama_client")
 _TIMEOUT = 30.0
 
 
-class LLMClient:
-    """Calls LLM /generate, /health, and /settings endpoints."""
+class OllamaClient:
+    """Calls llm-ollama /generate, /health, and /settings endpoints."""
 
     @staticmethod
     async def health() -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(f"{config.LLM_ENDPOINT}/health")
+                r = await client.get(f"{config.LLM_OLLAMA_SERVICE_ENDPOINT}/health")
                 r.raise_for_status()
                 return {"enabled": True, "healthy": True, **r.json()}
         except Exception as exc:
-            logger.warning("LLM health check failed: %s", exc)
+            logger.warning("Ollama health check failed: %s", exc)
             return {"enabled": True, "healthy": False, "error": str(exc)}
 
     @staticmethod
@@ -39,8 +39,8 @@ class LLMClient:
     ) -> dict[str, Any] | None:
         """Generate a natural-language sentence about the coffee type.
 
-        The llm service owns all generation defaults via its /settings
-        endpoint; the app only sends the prompt.
+        The llm-ollama service owns all generation defaults via its
+        /settings endpoint; the app only sends the prompt.
 
         Returns
         -------
@@ -58,41 +58,41 @@ class LLMClient:
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 r = await client.post(
-                    f"{config.LLM_ENDPOINT}/generate",
+                    f"{config.LLM_OLLAMA_SERVICE_ENDPOINT}/generate",
                     json={"prompt": prompt},
                 )
                 r.raise_for_status()
                 result = r.json()
-                logger.info("LLM generated %d tokens in %.2fs",
+                logger.info("Ollama generated %d tokens in %.2fs",
                             result.get("tokens", 0), result.get("elapsed_s", 0))
                 return result
         except Exception as exc:
-            logger.error("LLM generate failed: %s", exc)
+            logger.error("Ollama generate failed: %s", exc)
             return None
 
     @staticmethod
     async def get_settings() -> list[dict[str, Any]] | None:
-        """Fetch settings metadata from the LLM service."""
+        """Fetch settings metadata from the llm-ollama service."""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(f"{config.LLM_ENDPOINT}/settings")
+                r = await client.get(f"{config.LLM_OLLAMA_SERVICE_ENDPOINT}/settings")
                 r.raise_for_status()
                 return r.json()
         except Exception as exc:
-            logger.error("LLM get_settings failed: %s", exc)
+            logger.error("Ollama get_settings failed: %s", exc)
             return None
 
     @staticmethod
     async def update_settings(settings: dict[str, Any]) -> dict[str, Any] | None:
-        """Update settings on the LLM service."""
+        """Update settings on the llm-ollama service."""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 r = await client.patch(
-                    f"{config.LLM_ENDPOINT}/settings",
+                    f"{config.LLM_OLLAMA_SERVICE_ENDPOINT}/settings",
                     json={"settings": settings},
                 )
                 r.raise_for_status()
                 return r.json()
         except Exception as exc:
-            logger.error("LLM update_settings failed: %s", exc)
+            logger.error("Ollama update_settings failed: %s", exc)
             return None

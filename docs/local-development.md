@@ -86,7 +86,8 @@ The mock sensor mode is the default, so no `.env` file is strictly required for 
 |----------|---------|-------|
 | `SENSOR_MODE` | `mock` | Replays CSV samples from `data/` |
 | `CLASSIFIER_ENDPOINT` | `http://classifier:8001` | Override to `http://localhost:8001` when running natively (done automatically by `run-app-local.bat`) |
-| `LLM_ENDPOINT` | `http://llm:8002` | Override to `http://localhost:8002` |
+| `LLM_ENDPOINT` | `http://llm:8002` | Override to `http://localhost:8002` when running natively (done automatically by `run-app-local.bat`) |
+| `LLM_OLLAMA_SERVICE_ENDPOINT` | `http://llm-ollama:8003` | Override to `http://localhost:8003` when running natively |
 | `TTS_ENABLED` | `true` | Set to `false` on Windows |
 
 For the full list of environment variables, see the [Configuration](setup-raspberry-pi.md#configuration) section in the Raspberry Pi guide.

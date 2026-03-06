@@ -43,6 +43,25 @@ services:
     profiles:
       - llm
 
+  # ── llm-ollama – Ollama proxy for Hailo AI HAT+ ────────────────
+  llm-ollama:
+    build:
+      context: ./services/llm-ollama
+      dockerfile: Dockerfile
+    container_name: rpicoffee-llm-ollama
+    ports:
+      - "${LLM_OLLAMA_PORT:-8003}:${LLM_OLLAMA_PORT:-8003}"
+    volumes:
+      - llm-ollama-data:/data
+    environment:
+      - OLLAMA_ENDPOINT=${LLM_OLLAMA_ENDPOINT:-http://host.docker.internal:8000}
+      - SETTINGS_DIR=/data
+    networks:
+      - coffee-net
+    restart: unless-stopped
+    profiles:
+      - llm-ollama
+
   # ── tts – text-to-speech (Piper) ───────────────────────────────
   tts:
     build:
@@ -87,5 +106,6 @@ networks:
 
 volumes:
   llm-data:
+  llm-ollama-data:
   tts-data:
   remote-save-data:
