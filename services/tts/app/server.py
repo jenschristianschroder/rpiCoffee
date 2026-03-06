@@ -104,6 +104,29 @@ async def startup():
         raise
 
 
+@app.get("/manifest")
+async def manifest():
+    return {
+        "name": "tts",
+        "version": "1.0.0",
+        "description": "Offline speech synthesis using Piper TTS",
+        "inputs": [
+            {"name": "text", "type": "string", "required": True, "description": "Text to synthesize"},
+            {"name": "speed", "type": "float", "required": False, "description": "Speech speed multiplier (default 1.0)"},
+        ],
+        "outputs": [
+            {"name": "audio", "type": "binary", "description": "Synthesized WAV audio bytes"},
+        ],
+        "endpoints": {
+            "execute": {"method": "POST", "path": "/synthesize"},
+            "health": {"method": "GET", "path": "/health"},
+            "settings": {"method": "GET", "path": "/settings"},
+            "update_settings": {"method": "PATCH", "path": "/settings"},
+        },
+        "failure_modes": ["skip", "halt"],
+    }
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""

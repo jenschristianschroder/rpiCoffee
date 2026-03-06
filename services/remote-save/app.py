@@ -195,6 +195,33 @@ def upload_file(
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
+
+@app.get("/manifest")
+def manifest() -> dict:
+    return {
+        "name": "remote-save",
+        "version": "1.0.0",
+        "description": "Persist brew results to Microsoft Dataverse",
+        "inputs": [
+            {"name": "name", "type": "string", "required": True, "description": "Record name"},
+            {"name": "coffee_type", "type": "string", "required": True, "description": "Coffee type label"},
+            {"name": "confidence", "type": "float", "required": True, "description": "Classification confidence"},
+            {"name": "text", "type": "string", "required": False, "description": "Generated comment text"},
+            {"name": "sensor_data", "type": "array", "required": False, "description": "Raw sensor data for CSV upload"},
+        ],
+        "outputs": [
+            {"name": "record_id", "type": "string", "description": "Dataverse record ID"},
+        ],
+        "endpoints": {
+            "execute": {"method": "POST", "path": "/save"},
+            "health": {"method": "GET", "path": "/health"},
+            "settings": {"method": "GET", "path": "/settings"},
+            "update_settings": {"method": "PATCH", "path": "/settings"},
+        },
+        "failure_modes": ["skip"],
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}

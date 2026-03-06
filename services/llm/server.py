@@ -229,6 +229,32 @@ app = FastAPI(title="rpicoffee-llm", version="2.0.0", lifespan=lifespan)
 
 # ── Endpoints ────────────────────────────────────────────────────
 
+@app.get("/manifest")
+async def manifest():
+    return {
+        "name": "llm",
+        "version": "2.0.0",
+        "description": "Coffee comment generator using fine-tuned Qwen2.5-0.5B (llama-cpp)",
+        "inputs": [
+            {"name": "coffee_label", "type": "string", "required": True, "description": "Coffee type label from classifier"},
+            {"name": "timestamp", "type": "string", "required": True, "description": "ISO-8601 timestamp of brew"},
+        ],
+        "outputs": [
+            {"name": "response", "type": "string", "description": "Generated witty comment"},
+            {"name": "tokens", "type": "int", "description": "Number of tokens generated"},
+            {"name": "elapsed_s", "type": "float", "description": "Generation time in seconds"},
+            {"name": "tokens_per_s", "type": "float", "description": "Tokens per second"},
+        ],
+        "endpoints": {
+            "execute": {"method": "POST", "path": "/generate"},
+            "health": {"method": "GET", "path": "/health"},
+            "settings": {"method": "GET", "path": "/settings"},
+            "update_settings": {"method": "PATCH", "path": "/settings"},
+        },
+        "failure_modes": ["skip", "halt"],
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}

@@ -112,6 +112,31 @@ class TrainRequest(BaseModel):
     data_dir: str | None = None
 
 
+# ── Manifest ─────────────────────────────────────────────────────
+
+@app.get("/manifest")
+async def manifest():
+    return {
+        "name": "classifier",
+        "version": "2.0.0",
+        "description": "Coffee type classifier using scikit-learn RandomForest",
+        "inputs": [
+            {"name": "sensor_data", "type": "array", "required": True, "description": "6-axis IMU sensor readings"},
+        ],
+        "outputs": [
+            {"name": "label", "type": "string", "description": "Classified coffee type"},
+            {"name": "confidence", "type": "float", "description": "Classification confidence score"},
+        ],
+        "endpoints": {
+            "execute": {"method": "POST", "path": "/classify"},
+            "health": {"method": "GET", "path": "/health"},
+            "settings": {"method": "GET", "path": "/settings"},
+            "update_settings": {"method": "PATCH", "path": "/settings"},
+        },
+        "failure_modes": ["skip", "halt"],
+    }
+
+
 # ── Health ───────────────────────────────────────────────────────
 
 @app.get("/health")
