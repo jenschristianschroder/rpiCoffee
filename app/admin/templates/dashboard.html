@@ -531,7 +531,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.card[id]').forEach(function(card) {
         card.addEventListener('click', function(e) {
             // Only toggle when clicking the card padding, header, or h3 — not interactive children
-            if (e.target.closest('button, a, input, select, textarea, label, canvas, .stats-grid, .chart-wrap, form')) return;
+            if (e.target.closest('button, a, input, select, textarea, label, canvas, .stats-grid, .chart-wrap, form, summary, details')) return;
             card.classList.toggle('collapsed');
             var id = card.id || '';
             if (id) sessionStorage.setItem('card-' + id, card.classList.contains('collapsed') ? '1' : '0');
@@ -1532,20 +1532,19 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 
 <script>
 (function() {
-    // Fetch and render settings when a panel is opened
+    // Fetch and render settings when a panel is opened (always refetch)
     document.querySelectorAll('.svc-settings-panel').forEach(function(panel) {
-        var loaded = false;
         panel.addEventListener('toggle', async function() {
-            if (!panel.open || loaded) return;
-            loaded = true;
+            if (!panel.open) return;
             var svc = panel.dataset.service;
             var body = panel.querySelector('.svc-settings-body');
+            body.innerHTML = '<p style="color:var(--pico-muted-color);font-size:0.85rem;">Loading…</p>';
             try {
                 var r = await fetch('/api/services/' + svc + '/settings');
+                if (!r.ok) throw new Error('HTTP ' + r.status);
                 var settings = await r.json();
                 if (settings.error) {
                     body.innerHTML = '<p style="color:var(--pico-del-color);">' + settings.error + '</p>';
-                    loaded = false;
                     return;
                 }
                 if (!Array.isArray(settings) || settings.length === 0) {
@@ -1555,7 +1554,6 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 renderSettingsForm(body, svc, settings);
             } catch (e) {
                 body.innerHTML = '<p style="color:var(--pico-del-color);">Service unreachable.</p>';
-                loaded = false;
             }
         });
     });
