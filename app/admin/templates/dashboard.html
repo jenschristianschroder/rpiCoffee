@@ -1311,45 +1311,12 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                            {% if config['LLM_BACKEND'] != 'ollama' %}disabled{% endif %}>
                     {% if descriptions.get('LLM_MODEL') %}<small>{{ descriptions['LLM_MODEL'] }}</small>{% endif %}
                 </label>
-            </div>
-            <div class="grid">
-                <label for="LLM_MAX_TOKENS">Max Tokens
-                    <input type="number" id="LLM_MAX_TOKENS" name="LLM_MAX_TOKENS" value="{{ config['LLM_MAX_TOKENS'] }}" min="1" max="4096">
-                    {% if descriptions.get('LLM_MAX_TOKENS') %}<small>{{ descriptions['LLM_MAX_TOKENS'] }}</small>{% endif %}
-                </label>
-                <label for="LLM_TEMPERATURE">Temperature
-                    <input type="number" id="LLM_TEMPERATURE" name="LLM_TEMPERATURE" value="{{ config['LLM_TEMPERATURE'] }}" min="0" max="2" step="0.05">
-                    {% if descriptions.get('LLM_TEMPERATURE') %}<small>{{ descriptions['LLM_TEMPERATURE'] }}</small>{% endif %}
-                </label>
-            </div>
-            <div class="grid">
-                <label for="LLM_TOP_P">Top-P
-                    <input type="number" id="LLM_TOP_P" name="LLM_TOP_P" value="{{ config['LLM_TOP_P'] }}" min="0" max="1" step="0.05">
-                    {% if descriptions.get('LLM_TOP_P') %}<small>{{ descriptions['LLM_TOP_P'] }}</small>{% endif %}
-                </label>
                 <label for="LLM_KEEP_ALIVE">Keep Alive
                     <input type="number" id="LLM_KEEP_ALIVE" name="LLM_KEEP_ALIVE" value="{{ config['LLM_KEEP_ALIVE'] }}"
                            {% if config['LLM_BACKEND'] != 'ollama' %}disabled{% endif %}>
                     {% if descriptions.get('LLM_KEEP_ALIVE') %}<small>{{ descriptions['LLM_KEEP_ALIVE'] }}</small>{% endif %}
                 </label>
             </div>
-            <div class="grid">
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    TTS Mode
-                    <input type="checkbox" name="LLM_TTS" role="switch"
-                           {% if config['LLM_TTS'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('LLM_TTS') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_TTS'] }}</small>{% endif %}
-                </div>
-            </div>
-            <label>
-                System Message
-                <textarea name="LLM_SYSTEM_MESSAGE" rows="8"
-                          style="font-family:monospace;font-size:0.85rem;"
-                >{{ config['LLM_SYSTEM_MESSAGE'] }}</textarea>
-            </label>
-            {% if descriptions.get('LLM_SYSTEM_MESSAGE') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_SYSTEM_MESSAGE'] }}</small>{% endif %}
         </fieldset>
 
         <fieldset>
@@ -1424,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
         </fieldset>
 
         <fieldset>
-            <legend><strong>UI</strong> – Interface Options</legend>
+            <legend><strong>App</strong> – Interface &amp; Data Collection</legend>
             <div class="grid">
                 <div>
                 <label style="display:flex;align-items:center;gap:0.5rem;">
@@ -1434,6 +1401,24 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 </label>
                 {% if descriptions.get('VIRTUAL_KEYBOARD_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['VIRTUAL_KEYBOARD_ENABLED'] }}</small>{% endif %}
                 </div>
+                <div>
+                <label style="display:flex;align-items:center;gap:0.5rem;">
+                    Data Collection
+                    <input type="checkbox" name="DATA_COLLECT_ENABLED" role="switch"
+                           {% if config['DATA_COLLECT_ENABLED'] %}checked{% endif %}>
+                </label>
+                {% if descriptions.get('DATA_COLLECT_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['DATA_COLLECT_ENABLED'] }}</small>{% endif %}
+                </div>
+            </div>
+            <div class="grid">
+                <label for="DATA_COLLECT_LABEL">Collection Label
+                    <input type="text" id="DATA_COLLECT_LABEL" name="DATA_COLLECT_LABEL" value="{{ config['DATA_COLLECT_LABEL'] }}">
+                    {% if descriptions.get('DATA_COLLECT_LABEL') %}<small>{{ descriptions['DATA_COLLECT_LABEL'] }}</small>{% endif %}
+                </label>
+                <label for="DATA_COLLECT_LABELS">Available Labels
+                    <input type="text" id="DATA_COLLECT_LABELS" name="DATA_COLLECT_LABELS" value="{{ config['DATA_COLLECT_LABELS'] }}">
+                    {% if descriptions.get('DATA_COLLECT_LABELS') %}<small>{{ descriptions['DATA_COLLECT_LABELS'] }}</small>{% endif %}
+                </label>
             </div>
         </fieldset>
 
@@ -1577,9 +1562,17 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                     + '<input type="number" step="1" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
                     + '</label>';
             } else {
-                inputHtml = '<label>' + s.name
-                    + '<input type="text" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
-                    + '</label>';
+                var val = s.value != null ? s.value : '';
+                var escaped = String(val).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                if (String(val).length > 80) {
+                    inputHtml = '<label>' + s.name
+                        + '<textarea name="' + s.key + '" rows="6" style="font-family:monospace;font-size:0.85rem;">' + escaped.replace(/&quot;/g, '"') + '</textarea>'
+                        + '</label>';
+                } else {
+                    inputHtml = '<label>' + s.name
+                        + '<input type="text" name="' + s.key + '" value="' + escaped + '">'
+                        + '</label>';
+                }
             }
             html += '<div style="margin-bottom:0.5rem;">'
                 + inputHtml
