@@ -142,6 +142,47 @@ DELETE /training-data/{label}/{filename}
 
 Delete a specific training file.
 
+### Settings
+
+```
+GET /settings
+```
+
+Returns configurable settings with current values.
+
+**Response:**
+
+```json
+[
+  {
+    "key": "CONFIDENCE_THRESHOLD",
+    "name": "Confidence Threshold",
+    "description": "Minimum confidence score to accept a classification result",
+    "type": "float",
+    "value": 0.6
+  }
+]
+```
+
+```
+PATCH /settings
+Content-Type: application/json
+```
+
+**Request body:**
+
+```json
+{ "settings": { "CONFIDENCE_THRESHOLD": 0.75 } }
+```
+
+**Response:**
+
+```json
+{ "updated": ["CONFIDENCE_THRESHOLD"] }
+```
+
+Settings are persisted to `/data/settings.json` inside the container volume.
+
 ## Feature Extraction
 
 52 statistical features are computed per recording:

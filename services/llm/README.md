@@ -21,6 +21,8 @@ See [API.md](API.md) for the full API reference. Summary:
 |--------|------|-------------|
 | `GET` | `/health` | Health check |
 | `POST` | `/generate` | Generate a coffee commentary |
+| `GET` | `/settings` | Get configurable settings with current values |
+| `PATCH` | `/settings` | Update settings (persisted to volume) |
 
 The `/generate` endpoint accepts an optional `system` field to override the system prompt, and a `tts: true` flag to optimize output for speech synthesis.
 

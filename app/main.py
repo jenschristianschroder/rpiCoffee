@@ -482,6 +482,42 @@ async def services_status():
     return statuses
 
 
+# ── Service settings proxy API ───────────────────────────────────
+
+_SERVICE_CLIENTS = {
+    "classifier": ClassifierClient,
+    "llm": LLMClient,
+    "tts": TTSClient,
+    "remote-save": RemoteSaveClient,
+}
+
+
+@app.get("/api/services/{name}/settings")
+async def service_settings_get(name: str):
+    """Proxy GET /settings to the named backend service."""
+    client = _SERVICE_CLIENTS.get(name)
+    if client is None:
+        return {"error": f"Unknown service: {name}"}
+    result = await client.get_settings()
+    if result is None:
+        return {"error": f"Failed to fetch settings from {name}"}
+    return result
+
+
+@app.patch("/api/services/{name}/settings")
+async def service_settings_update(name: str, request: Request):
+    """Proxy PATCH /settings to the named backend service."""
+    client = _SERVICE_CLIENTS.get(name)
+    if client is None:
+        return {"error": f"Unknown service: {name}"}
+    body = await request.json()
+    settings = body.get("settings", body)
+    result = await client.update_settings(settings)
+    if result is None:
+        return {"error": f"Failed to update settings on {name}"}
+    return result
+
+
 # ── Data Collection API ──────────────────────────────────────────
 
 @app.post("/api/collect/start")

@@ -18,6 +18,7 @@ ENV CMAKE_ARGS="-DGGML_BLAS=OFF"
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git libgomp1 \
     && pip install --no-cache-dir llama-cpp-python==0.3.8 \
+       fastapi==0.115.* uvicorn[standard]==0.34.* \
     && apt-get purge -y build-essential cmake git \
     && apt-get autoremove -y \
     && apt-get install -y --no-install-recommends libgomp1 \
@@ -33,5 +34,6 @@ ENV MODEL_PATH="model/coffee-Q4_K_M.gguf"
 ENV THREADS="4"
 ENV CTX="512"
 ENV BATCH="64"
+ENV SETTINGS_DIR="/data"
 
-CMD ["sh", "-c", "python server.py --model $MODEL_PATH --threads $THREADS --ctx $CTX --batch $BATCH"]
+CMD ["python", "server.py"]

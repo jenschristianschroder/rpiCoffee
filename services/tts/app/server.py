@@ -5,12 +5,16 @@ Provides a REST API for text-to-speech synthesis using Piper TTS.
 Runs entirely locally — no cloud services required.
 """
 
+from __future__ import annotations
+
 import io
+import json
 import wave
 import logging
+import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response, JSONResponse
@@ -22,6 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = Path("/app/models")
+SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
 
 app = FastAPI(
     title="Local TTS API",
@@ -31,6 +36,40 @@ app = FastAPI(
 
 # Initialize TTS engine at startup
 engine: Optional[TTSEngine] = None
+
+# ── Settings persistence ─────────────────────────────────────────
+_runtime: dict[str, Any] = {}
+
+_SETTINGS_REGISTRY: list[dict[str, str]] = [
+    {"key": "MODELS_DIR", "name": "Models Directory", "description": "Path to the directory containing Piper voice models", "type": "str"},
+    {"key": "DEFAULT_SPEED", "name": "Default Speed", "description": "Default speech speed multiplier (1.0 = normal)", "type": "float"},
+]
+
+
+def _load_settings() -> None:
+    _runtime["MODELS_DIR"] = os.environ.get("MODELS_DIR", str(MODELS_DIR))
+    _runtime["DEFAULT_SPEED"] = float(os.environ.get("DEFAULT_SPEED", "1.0"))
+
+    if SETTINGS_PATH.exists():
+        try:
+            persisted = json.loads(SETTINGS_PATH.read_text())
+            for entry in _SETTINGS_REGISTRY:
+                key = entry["key"]
+                if key in persisted:
+                    dtype = entry["type"]
+                    if dtype == "float":
+                        _runtime[key] = float(persisted[key])
+                    elif dtype == "int":
+                        _runtime[key] = int(persisted[key])
+                    else:
+                        _runtime[key] = str(persisted[key])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+
+def _save_settings() -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps(_runtime, indent=2))
 
 
 class SynthesizeRequest(BaseModel):
@@ -52,6 +91,7 @@ class VoiceInfo(BaseModel):
 async def startup():
     """Initialize the TTS engine on server startup."""
     global engine
+    _load_settings()
     try:
         engine = TTSEngine(models_dir=MODELS_DIR)
         voices = engine.list_voices()
@@ -143,3 +183,36 @@ async def synthesize_get(
     """
     request = SynthesizeRequest(text=text, voice=voice, speed=speed)
     return await synthesize(request)
+
+
+# ── Settings ─────────────────────────────────────────────────────
+
+class SettingsUpdate(BaseModel):
+    settings: dict[str, Any]
+
+
+@app.get("/settings")
+async def get_settings():
+    return [
+        {**entry, "value": _runtime.get(entry["key"])}
+        for entry in _SETTINGS_REGISTRY
+    ]
+
+
+@app.patch("/settings")
+async def update_settings(req: SettingsUpdate):
+    valid_keys = {e["key"] for e in _SETTINGS_REGISTRY}
+    updated = []
+    for key, value in req.settings.items():
+        if key not in valid_keys:
+            continue
+        dtype = next(e["type"] for e in _SETTINGS_REGISTRY if e["key"] == key)
+        if dtype == "int":
+            _runtime[key] = int(value)
+        elif dtype == "float":
+            _runtime[key] = float(value)
+        else:
+            _runtime[key] = str(value)
+        updated.append(key)
+    _save_settings()
+    return {"updated": updated}
