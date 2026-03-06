@@ -1391,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
         </fieldset>
 
         <fieldset>
-            <legend><strong>App</strong> – Interface &amp; Data Collection</legend>
+            <legend><strong>App</strong> – Interface Options</legend>
             <div class="grid">
                 <div>
                 <label style="display:flex;align-items:center;gap:0.5rem;">
@@ -1401,24 +1401,6 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 </label>
                 {% if descriptions.get('VIRTUAL_KEYBOARD_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['VIRTUAL_KEYBOARD_ENABLED'] }}</small>{% endif %}
                 </div>
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    Data Collection
-                    <input type="checkbox" name="DATA_COLLECT_ENABLED" role="switch"
-                           {% if config['DATA_COLLECT_ENABLED'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('DATA_COLLECT_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['DATA_COLLECT_ENABLED'] }}</small>{% endif %}
-                </div>
-            </div>
-            <div class="grid">
-                <label for="DATA_COLLECT_LABEL">Collection Label
-                    <input type="text" id="DATA_COLLECT_LABEL" name="DATA_COLLECT_LABEL" value="{{ config['DATA_COLLECT_LABEL'] }}">
-                    {% if descriptions.get('DATA_COLLECT_LABEL') %}<small>{{ descriptions['DATA_COLLECT_LABEL'] }}</small>{% endif %}
-                </label>
-                <label for="DATA_COLLECT_LABELS">Available Labels
-                    <input type="text" id="DATA_COLLECT_LABELS" name="DATA_COLLECT_LABELS" value="{{ config['DATA_COLLECT_LABELS'] }}">
-                    {% if descriptions.get('DATA_COLLECT_LABELS') %}<small>{{ descriptions['DATA_COLLECT_LABELS'] }}</small>{% endif %}
-                </label>
             </div>
         </fieldset>
 
