@@ -27,6 +27,10 @@ class SetEnabledRequest(BaseModel):
     enabled: bool
 
 
+class UpdateServiceRequest(BaseModel):
+    endpoint: str = Field(..., description="New base URL for the service")
+
+
 class PipelineUpdateRequest(BaseModel):
     pipeline: list[PipelineStep]
 
@@ -87,6 +91,20 @@ async def set_service_enabled(name: str, req: SetEnabledRequest) -> dict[str, An
         raise HTTPException(status_code=404, detail=f"Service '{name}' not found")
     registry.set_enabled(name, req.enabled)
     return {"name": name, "enabled": req.enabled}
+
+
+@router.patch("/services/{name}")
+async def update_service(name: str, req: UpdateServiceRequest) -> dict[str, Any]:
+    """Update a service's endpoint URL and re-fetch its manifest."""
+    if not registry.get(name):
+        raise HTTPException(status_code=404, detail=f"Service '{name}' not found")
+    reg = await registry.update_service(name, req.endpoint)
+    return {
+        "name": reg.name,
+        "endpoint": reg.endpoint,
+        "enabled": reg.enabled,
+        "manifest": reg.manifest.model_dump() if reg.manifest else None,
+    }
 
 
 # ── Health ───────────────────────────────────────────────────────

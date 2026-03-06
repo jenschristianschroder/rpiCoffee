@@ -101,6 +101,17 @@ class ServiceRegistry:
             reg.enabled = enabled
             self.save()
 
+    async def update_service(self, name: str, endpoint: str) -> ServiceRegistration | None:
+        """Update a service's endpoint and re-fetch its manifest."""
+        reg = self._config.services.get(name)
+        if not reg:
+            return None
+        reg.endpoint = endpoint.rstrip("/")
+        reg.manifest = await self._fetch_manifest(reg.endpoint)
+        self.save()
+        logger.info("Updated service '%s' endpoint to %s", name, reg.endpoint)
+        return reg
+
     # ── Manifest fetching ────────────────────────────────────────
 
     async def refresh_manifest(self, name: str) -> ServiceManifest | None:
