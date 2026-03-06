@@ -237,10 +237,17 @@ docker compose --profile classifier up -d
 
 ## Development
 
+The classifier is managed by `docker-compose.yml` under the `classifier` profile:
+
 ```bash
-cd services/classifier
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+# Start the classifier
+docker compose --profile classifier up -d
+
+# Rebuild after changes
+docker compose --profile classifier up -d --build
+
+# View logs
+docker compose logs -f classifier
 ```
 
 ## Dependencies

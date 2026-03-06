@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# rpiCoffee – Health & status dashboard
+# rpiCoffee – Health & status dashboard (Docker-only)
 #
-# Checks all services, Docker containers, systemd units, and sensor
-# and prints a summary table with health, IP, port, and uptime.
+# Checks all Docker containers and service health endpoints,
+# and prints a summary table.
 #
 # Usage:
 #   ./status.sh          # coloured table
@@ -31,14 +31,12 @@ else
 fi
 
 # Layer 2: data/settings.json overrides (admin panel persisted settings)
-# These take priority over .env, matching the app's ConfigManager behaviour.
 SETTINGS_FILE="${SCRIPT_DIR}/data/settings.json"
 if [[ -f "$SETTINGS_FILE" ]] && command -v python3 &>/dev/null; then
     eval "$(python3 -c "
 import json, sys, shlex
 with open(sys.argv[1]) as f:
     settings = json.load(f)
-# Only export config keys the status script cares about
 keys = [
     'CLASSIFIER_ENABLED', 'CLASSIFIER_ENDPOINT',
     'LLM_ENABLED', 'LLM_BACKEND', 'LLM_ENDPOINT', 'LLM_MODEL',
@@ -50,7 +48,6 @@ keys = [
 for k in keys:
     if k in settings:
         v = settings[k]
-        # Normalise booleans to true/false strings for bash
         if isinstance(v, bool):
             v = 'true' if v else 'false'
         print(f'export {k}={shlex.quote(str(v))}')
@@ -59,19 +56,15 @@ fi
 
 # ── Helpers ──────────────────────────────────────────────────────
 
-# Extract host and port from an endpoint URL
 parse_endpoint() {
     local url="$1"
-    # Strip protocol
     local hostport="${url#*://}"
-    # Strip path
     hostport="${hostport%%/*}"
     local host="${hostport%:*}"
     local port="${hostport##*:}"
     echo "$host" "$port"
 }
 
-# HTTP health check — returns "ok", "unhealthy", or "unreachable"
 http_health() {
     local url="$1"
     local code
@@ -85,7 +78,6 @@ http_health() {
     fi
 }
 
-# Docker container status: "running (Up 2h)", "exited", "not found"
 container_status() {
     local name="$1"
     if ! command -v docker &>/dev/null; then
@@ -105,7 +97,6 @@ container_status() {
     fi
 }
 
-# Convert ISO timestamp to human-friendly uptime
 docker_uptime() {
     local started="$1"
     if command -v python3 &>/dev/null; then
@@ -128,54 +119,30 @@ else:
     fi
 }
 
-# Systemd unit status: "active (running) since ...", "inactive", "not found"
-systemd_status() {
-    local unit="$1"
-    if ! command -v systemctl &>/dev/null; then
-        echo "n/a"
-        return
-    fi
-    local active
-    active=$(systemctl is-active "$unit" 2>/dev/null) || active="not-found"
-    if [[ "$active" == "active" ]]; then
-        local since
-        since=$(systemctl show "$unit" --property=ActiveEnterTimestamp --value 2>/dev/null)
-        echo "active (since ${since:-?})"
-    else
-        echo "$active"
-    fi
-}
-
 # ── Detect host IP ───────────────────────────────────────────────
 PI_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 PI_IP="${PI_IP:-127.0.0.1}"
 
 # ── Collect status for each component ────────────────────────────
 
-declare -A STATUS        # component → status string
-declare -A HEALTH        # component → ok / unhealthy / unreachable / disabled
-declare -A ENDPOINT_INFO # component → host:port
-declare -A EXTRA         # component → extra info
+declare -A STATUS
+declare -A HEALTH
+declare -A ENDPOINT_INFO
+declare -A EXTRA
 
-# --- App (uvicorn) ---
+# --- App ---
 APP_PORT="${APP_PORT:-8080}"
 APP_URL="http://localhost:${APP_PORT}"
-STATUS[app]="$(systemd_status rpicoffee-app)"
+STATUS[app]="$(container_status rpicoffee-app)"
 HEALTH[app]="$(http_health "${APP_URL}/health")"
 ENDPOINT_INFO[app]="${PI_IP}:${APP_PORT}"
 EXTRA[app]="sensor_mode=${SENSOR_MODE:-mock}"
-
-# --- Docker services unit ---
-STATUS[docker-services]="$(systemd_status rpicoffee-services)"
-HEALTH[docker-services]="n/a"
-ENDPOINT_INFO[docker-services]="—"
-EXTRA[docker-services]=""
 
 # --- Classifier ---
 if [[ "${CLASSIFIER_ENABLED:-false}" == "true" ]]; then
     read -r c_host c_port <<< "$(parse_endpoint "${CLASSIFIER_ENDPOINT:-http://localhost:8001}")"
     STATUS[classifier]="$(container_status rpicoffee-classifier)"
-    HEALTH[classifier]="$(http_health "${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health")"
+    HEALTH[classifier]="$(http_health "http://localhost:${CLASSIFIER_PORT:-8001}/health")"
     ENDPOINT_INFO[classifier]="${PI_IP}:${c_port}"
     EXTRA[classifier]=""
 else
@@ -188,19 +155,15 @@ fi
 # --- LLM ---
 if [[ "${LLM_ENABLED:-false}" == "true" ]]; then
     if [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
-        # External service — use the dedicated Ollama endpoint
         _OLLAMA_URL="${LLM_OLLAMA_ENDPOINT:-http://localhost:8000}"
         read -r l_host l_port <<< "$(parse_endpoint "$_OLLAMA_URL")"
-        # Show systemd unit status alongside health
-        _HAILO_ACTIVE="$(systemctl is-active rpicoffee-hailo-ollama 2>/dev/null || echo unknown)"
-        _HAILO_ENABLED="$(systemctl is-enabled rpicoffee-hailo-ollama 2>/dev/null || echo unknown)"
-        STATUS[llm]="external (ollama) unit=${_HAILO_ACTIVE}/${_HAILO_ENABLED}"
+        STATUS[llm]="external (ollama)"
         HEALTH[llm]="$(http_health "${_OLLAMA_URL}/api/tags")"
         EXTRA[llm]="backend=ollama model=${LLM_MODEL:-qwen2:1.5b}"
     else
         read -r l_host l_port <<< "$(parse_endpoint "${LLM_ENDPOINT:-http://localhost:8002}")"
         STATUS[llm]="$(container_status rpicoffee-llm)"
-        HEALTH[llm]="$(http_health "${LLM_ENDPOINT:-http://localhost:8002}/health")"
+        HEALTH[llm]="$(http_health "http://localhost:${LLM_PORT:-8002}/health")"
         EXTRA[llm]="backend=llama-cpp"
     fi
     ENDPOINT_INFO[llm]="${PI_IP}:${l_port}"
@@ -215,7 +178,7 @@ fi
 if [[ "${TTS_ENABLED:-false}" == "true" ]]; then
     read -r t_host t_port <<< "$(parse_endpoint "${TTS_ENDPOINT:-http://localhost:5050}")"
     STATUS[tts]="$(container_status rpicoffee-tts)"
-    HEALTH[tts]="$(http_health "${TTS_ENDPOINT:-http://localhost:5050}/health")"
+    HEALTH[tts]="$(http_health "http://localhost:${TTS_PORT:-5050}/health")"
     ENDPOINT_INFO[tts]="${PI_IP}:${t_port}"
     EXTRA[tts]=""
 else
@@ -229,7 +192,7 @@ fi
 if [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]]; then
     read -r r_host r_port <<< "$(parse_endpoint "${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}")"
     STATUS[remote-save]="$(container_status rpicoffee-remote-save)"
-    HEALTH[remote-save]="$(http_health "${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health")"
+    HEALTH[remote-save]="$(http_health "http://localhost:${REMOTE_SAVE_PORT:-7000}/health")"
     ENDPOINT_INFO[remote-save]="${PI_IP}:${r_port}"
     EXTRA[remote-save]=""
 else
@@ -241,7 +204,6 @@ fi
 
 # --- Sensor ---
 if [[ "${SENSOR_MODE:-mock}" == "picoquake" ]]; then
-    # Query the app's API for sensor status (if app is reachable)
     if [[ "${HEALTH[app]}" == "ok" ]]; then
         SENSOR_JSON=$(curl -sf --max-time 3 "${APP_URL}/api/services/status" 2>/dev/null) || SENSOR_JSON=""
         if [[ -n "$SENSOR_JSON" ]] && command -v python3 &>/dev/null; then
@@ -266,12 +228,6 @@ if [[ "${SENSOR_MODE:-mock}" == "picoquake" ]]; then
     fi
     STATUS[sensor]="picoquake"
     ENDPOINT_INFO[sensor]="/dev/ttyACM* (USB)"
-    # Check if USB device is present
-    if ls /dev/ttyACM* 1>/dev/null 2>&1; then
-        STATUS[sensor]="picoquake (USB present)"
-    else
-        STATUS[sensor]="picoquake (USB NOT found)"
-    fi
 elif [[ "${SENSOR_MODE:-mock}" == "mock" ]]; then
     STATUS[sensor]="mock"
     HEALTH[sensor]="ok"
@@ -286,10 +242,9 @@ fi
 
 # ── Output ───────────────────────────────────────────────────────
 
-COMPONENTS=(app docker-services classifier llm tts remote-save sensor)
+COMPONENTS=(app classifier llm tts remote-save sensor)
 
 if $JSON_MODE; then
-    # JSON output
     echo "{"
     first=true
     for comp in "${COMPONENTS[@]}"; do
@@ -305,7 +260,6 @@ fi
 
 # ── Pretty table output ─────────────────────────────────────────
 
-# Health colour helper
 health_badge() {
     local h="$1"
     case "$h" in
@@ -326,7 +280,6 @@ echo ""
 echo -e "  ${DIM}Host:${NC} ${BOLD}${PI_IP}${NC}    ${DIM}Time:${NC} $(date '+%Y-%m-%d %H:%M:%S %Z')"
 echo ""
 
-# Column headers
 printf "  ${BOLD}%-18s %-14s %-22s %-30s${NC}\n" "COMPONENT" "HEALTH" "ENDPOINT" "STATUS"
 printf "  ${DIM}%-18s %-14s %-22s %-30s${NC}\n" "─────────────────" "─────────────" "─────────────────────" "─────────────────────────────"
 
@@ -336,11 +289,8 @@ for comp in "${COMPONENTS[@]}"; do
     extra="${EXTRA[$comp]}"
 
     printf "  %-18s " "$comp"
-    # health_badge outputs colour codes, so we can't use printf width easily.
-    # Print badge then pad manually.
     echo -ne "$badge"
-    # Pad to 14 visible chars (badge is ≤12 visible chars)
-    pad=$((14 - ${#health} - 2))  # "● " = 2 chars + health text
+    pad=$((14 - ${#health} - 2))
     (( pad > 0 )) && printf "%${pad}s" "" || printf " "
     printf "%-22s " "${ENDPOINT_INFO[$comp]}"
     echo -e "${STATUS[$comp]}"
@@ -358,7 +308,7 @@ for comp in "${COMPONENTS[@]}"; do
     case "${HEALTH[$comp]}" in
         ok)       ((healthy++)) ;;
         disabled) ((disabled++)) ;;
-        n/a)      ;;  # don't count docker-services
+        n/a)      ;;
         *)        ((unhealthy++)) ;;
     esac
 done

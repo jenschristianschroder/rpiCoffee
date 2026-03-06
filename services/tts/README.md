@@ -113,14 +113,20 @@ docker compose restart tts
 
 ## Development
 
+The TTS service is managed by `docker-compose.yml` under the `tts` profile:
+
 ```bash
-cd services/tts
-pip install -r requirements.txt
-cd app
-uvicorn main:app --host 0.0.0.0 --port 5050 --reload
+# Start the TTS service
+docker compose --profile tts up -d
+
+# Rebuild after changes
+docker compose --profile tts up -d --build
+
+# View logs
+docker compose logs -f tts
 ```
 
-> **Note:** Piper TTS requires Linux. The TTS service is skipped when running locally on Windows.
+> **Note:** Piper TTS requires Linux. The Docker container handles this dependency automatically.
 
 ## Dependencies
 

@@ -41,15 +41,18 @@ All connection details are supplied via environment variables:
 
 ## Build & Run
 
-### Local (without Docker)
+### Docker Compose (recommended)
+
+The service is managed by `docker-compose.yml` under the `remote-save` profile:
 
 ```bash
-pip install -r requirements.txt
-# Ensure .env is populated or env vars are exported
-uvicorn app:app --host 0.0.0.0 --port 7000
+docker compose --profile remote-save up -d
+
+# View logs
+docker compose logs -f remote-save
 ```
 
-### Docker
+### Docker (standalone)
 
 With individual environment variables:
 

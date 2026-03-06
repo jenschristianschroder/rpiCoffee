@@ -1,5 +1,35 @@
 
 services:
+  # ── app – main FastAPI application ─────────────────────────────
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: rpicoffee-app
+    ports:
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+    volumes:
+      - ./data:/data
+    env_file:
+      - .env
+    environment:
+      - SENSOR_MODE=${SENSOR_MODE:-mock}
+      - CLASSIFIER_ENDPOINT=http://classifier:${CLASSIFIER_PORT:-8001}
+      - LLM_ENDPOINT=http://llm:${LLM_PORT:-8002}
+      - TTS_ENDPOINT=http://tts:${TTS_PORT:-5050}
+      - REMOTE_SAVE_ENDPOINT=http://remote-save:${REMOTE_SAVE_PORT:-7000}
+      - SETTINGS_DIR=/data
+      - DATA_DIR=/data
+    networks:
+      - coffee-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-8080}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # ── classifier – coffee drink classifier ───────────────────────
   classifier:
     build:
