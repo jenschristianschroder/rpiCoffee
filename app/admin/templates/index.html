@@ -181,10 +181,9 @@
     <span class="title">&#9749; rpiCoffee</span>
     <div class="status-dots">
         <div class="status-item"><span class="dot gray" id="s-sensor"></span>sensor</div>
-        <div class="status-item"><span class="dot gray" id="s-classifier"></span>classifier</div>
-        <div class="status-item"><span class="dot gray" id="s-llm"></span>text gen</div>
-        <div class="status-item"><span class="dot gray" id="s-tts"></span>TTS</div>
-        <div class="status-item"><span class="dot gray" id="s-remote_save"></span>save</div>
+        <div id="registry-dots" style="display:contents;">
+            <!-- Populated dynamically from service registry -->
+        </div>
     </div>
     <div class="right-group">
         <a href="/admin/" class="topbar-settings" title="Admin Settings">&#9881;</a>
@@ -244,7 +243,28 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ── Service health ────────────────────────────────────────────
+let _kioskRegistryLoaded = false;
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function loadKioskRegistry() {
+    try {
+        const r = await fetch('/api/registry/services');
+        const services = await r.json();
+        const container = document.getElementById('registry-dots');
+        if (!container) return;
+        let html = '';
+        services.forEach(function(svc) {
+            const svcId = svc.name.replace(/-/g, '_');
+            html += '<div class="status-item"><span class="dot gray" id="s-' + escHtml(svcId) + '"></span>' + escHtml(svc.name) + '</div>';
+        });
+        container.innerHTML = html;
+        _kioskRegistryLoaded = true;
+    } catch (e) { /* ignore */ }
+}
+
 async function checkServices() {
+    if (!_kioskRegistryLoaded) await loadKioskRegistry();
     try {
         const r = await fetch('/api/services/status');
         const data = await r.json();
@@ -257,6 +277,19 @@ async function checkServices() {
             } else {
                 if (item) item.style.display = '';
                 dot.className = info.healthy ? 'dot green' : 'dot red';
+            }
+        }
+        // Also check registry health for dynamic services
+        const rh = await fetch('/api/registry/health');
+        const healthData = await rh.json();
+        for (const [name, info] of Object.entries(healthData)) {
+            const svcId = name.replace(/-/g, '_');
+            const dot = document.getElementById('s-' + svcId);
+            if (!dot) continue;
+            if (info.status === 'unreachable' || info.error) {
+                dot.className = 'dot red';
+            } else {
+                dot.className = 'dot green';
             }
         }
     } catch (e) { /* ignore */ }
@@ -348,15 +381,11 @@ function createSensorChart() {
 }
 
 // ── Pipeline stage → dot blinking ─────────────────────────────
+// Legacy pattern-based mapping (fallback for status messages)
 const _stageMap = [
     { pattern: 'Collecting sensor data', dot: 's-sensor' },
     { pattern: 'Replaying test data',    dot: 's-sensor' },
     { pattern: 'Recording sensor data',  dot: 's-sensor' },
-    { pattern: 'Running pipeline',       dot: 's-classifier' },
-    { pattern: 'Classifying',            dot: 's-classifier' },
-    { pattern: 'Generating text',        dot: 's-llm' },
-    { pattern: 'Synthesizing speech',    dot: 's-tts' },
-    { pattern: 'Saving results',         dot: 's-remote_save' },
 ];
 
 function clearAllBlinks() {
@@ -366,13 +395,26 @@ function clearAllBlinks() {
 function setActiveDot(msg) {
     clearAllBlinks();
     if (!msg) return;
+    // Check legacy patterns first
     for (const s of _stageMap) {
         if (msg.indexOf(s.pattern) !== -1) {
             const el = document.getElementById(s.dot);
             if (el) el.classList.add('blink');
-            break;
+            return;
         }
     }
+    // Dynamic: "Running <service>…" messages from PipelineEngine
+    const runMatch = msg.match(/^Running\s+(.+?)[\u2026.]*$/);
+    if (runMatch) {
+        blinkServiceDot(runMatch[1]);
+    }
+}
+
+function blinkServiceDot(serviceName) {
+    clearAllBlinks();
+    const svcId = serviceName.replace(/-/g, '_');
+    const dot = document.getElementById('s-' + svcId);
+    if (dot) dot.classList.add('blink');
 }
 
 // ── Brew ──────────────────────────────────────────────────────
@@ -414,9 +456,27 @@ function brew() {
         setActiveDot(msg);
     });
 
+    // Dynamic step events from PipelineEngine
+    es.addEventListener('step_start', function(e) {
+        const d = JSON.parse(e.data);
+        statusEl.textContent = 'Running ' + d.service + '\u2026';
+        blinkServiceDot(d.service);
+    });
+
+    es.addEventListener('step_complete', function(e) {
+        const d = JSON.parse(e.data);
+        handleStepResult(d.service, d.result, resultContent);
+    });
+
+    es.addEventListener('step_error', function(e) {
+        const d = JSON.parse(e.data);
+        statusEl.textContent = d.service + ' failed';
+    });
+
+    // Legacy events (backward compat from PipelineEngine)
     es.addEventListener('classify', function(e) {
         const d = JSON.parse(e.data);
-        let html = '<span class="label-badge">' + d.label + '</span> ';
+        let html = '<span class="label-badge">' + escHtml(d.label) + '</span> ';
         html += '<span class="meta">(' + (d.confidence * 100).toFixed(1) + '% confidence)</span>';
         resultContent.innerHTML = html;
         resultContent.style.display = '';
@@ -424,12 +484,12 @@ function brew() {
 
     es.addEventListener('text', function(e) {
         const d = JSON.parse(e.data);
-        resultContent.insertAdjacentHTML('beforeend', '<p class="generated-text">"' + d.text + '"</p>');
+        resultContent.insertAdjacentHTML('beforeend', '<p class="generated-text">\u201c' + escHtml(d.text) + '\u201d</p>');
     });
 
     es.addEventListener('audio', function(e) {
         const d = JSON.parse(e.data);
-        resultContent.insertAdjacentHTML('beforeend', '<audio controls autoplay src="' + d.audio_url + '"></audio>');
+        resultContent.insertAdjacentHTML('beforeend', '<audio controls autoplay src="' + escHtml(d.audio_url) + '"></audio>');
     });
 
     es.addEventListener('data_collected', function(e) {
@@ -437,24 +497,21 @@ function brew() {
         clearAllBlinks();
         const d = JSON.parse(e.data);
         statusEl.textContent = '';
-        resultContent.innerHTML = '<span class="label-badge" style="background:#22c55e;">' + d.label + '</span> '
+        resultContent.innerHTML = '<span class="label-badge" style="background:#22c55e;">' + escHtml(d.label) + '</span> '
             + '<p class="meta">Data saved &middot; ' + d.samples + ' samples</p>';
         resultContent.style.display = '';
         btn.disabled = false;
+    });
+
+    es.addEventListener('pipeline_complete', function(e) {
+        // Pipeline engine's final summary — result event follows for full compat
     });
 
     es.addEventListener('result', function(e) {
         es.close();
         clearAllBlinks();
         const data = JSON.parse(e.data);
-        // Append final meta line
-        let meta = '<p class="meta">Steps: ' + (data.steps_completed.join(' \u2192 ') || 'none');
-        if (data.steps_skipped.length) meta += ' \u00b7 Skipped: ' + data.steps_skipped.join(', ');
-        meta += ' \u00b7 ' + data.sensor_samples + ' samples</p>';
-        if (data.error) meta = '<p class="error-note">' + data.error + '</p>' + meta;
-        // Filter out 'unavailable' error notes
-        meta = meta.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');
-        resultContent.insertAdjacentHTML('beforeend', meta);
+        showResultMeta(data, resultContent);
         statusEl.textContent = '';
         btn.disabled = false;
     });
@@ -467,28 +524,56 @@ function brew() {
     };
 }
 
+// ── Result helpers ────────────────────────────────────────────
+function handleStepResult(service, result, container) {
+    if (!result) return;
+    container.style.display = '';
+
+    // Classifier output
+    if (result.label) {
+        let html = '<span class="label-badge">' + escHtml(result.label) + '</span> ';
+        if (result.confidence != null) html += '<span class="meta">(' + (result.confidence * 100).toFixed(1) + '% confidence)</span>';
+        container.innerHTML = html;
+    }
+
+    // Text output (LLM response)
+    if (result.response) {
+        container.insertAdjacentHTML('beforeend', '<p class="generated-text">\u201c' + escHtml(result.response) + '\u201d</p>');
+    }
+
+    // Audio output (from any service)
+    if (result.audio_url) {
+        container.insertAdjacentHTML('beforeend', '<audio controls autoplay src="' + escHtml(result.audio_url) + '"></audio>');
+    }
+}
+
+function showResultMeta(data, container) {
+    // Append final meta line
+    let meta = '<p class="meta">Steps: ' + (data.steps_completed.join(' \u2192 ') || 'none');
+    if (data.steps_skipped && data.steps_skipped.length) meta += ' \u00b7 Skipped: ' + data.steps_skipped.join(', ');
+    meta += ' \u00b7 ' + data.sensor_samples + ' samples</p>';
+    if (data.error) meta = '<p class="error-note">' + escHtml(data.error) + '</p>' + meta;
+    // Filter out 'unavailable' error notes
+    meta = meta.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');
+    container.insertAdjacentHTML('beforeend', meta);
+}
+
 function showResult(data) {
     const el = document.getElementById('result-content');
-    let html = '';
+    el.innerHTML = '';
 
     if (data.label) {
-        html += '<span class="label-badge">' + data.label + '</span> ';
-        html += '<span class="meta">(' + (data.confidence * 100).toFixed(1) + '% confidence)</span>';
+        el.insertAdjacentHTML('beforeend', '<span class="label-badge">' + escHtml(data.label) + '</span> ');
+        if (data.confidence != null) el.insertAdjacentHTML('beforeend', '<span class="meta">(' + (data.confidence * 100).toFixed(1) + '% confidence)</span>');
     }
     if (data.text) {
-        html += '<p class="generated-text">"' + data.text + '"</p>';
+        el.insertAdjacentHTML('beforeend', '<p class="generated-text">\u201c' + escHtml(data.text) + '\u201d</p>');
     }
     if (data.audio_url) {
-        html += '<audio controls autoplay src="' + data.audio_url + '"></audio>';
+        el.insertAdjacentHTML('beforeend', '<audio controls autoplay src="' + escHtml(data.audio_url) + '"></audio>');
     }
-    if (data.error) {
-        html += '<p class="error-note">' + data.error + '</p>';
-    }    // Filter out 'unavailable' error notes before rendering
-    html = html.replace(/<p class="error-note">[^<]*unavailable[^<]*<\/p>/gi, '');    html += '<p class="meta">Steps: ' + (data.steps_completed.join(' → ') || 'none');
-    if (data.steps_skipped.length) html += ' · Skipped: ' + data.steps_skipped.join(', ');
-    html += ' · ' + data.sensor_samples + ' samples</p>';
 
-    el.innerHTML = html;
+    showResultMeta(data, el);
     el.style.display = '';
 }
 
