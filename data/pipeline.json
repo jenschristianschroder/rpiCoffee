@@ -3,33 +3,256 @@
     "classifier": {
       "name": "classifier",
       "endpoint": "http://127.0.0.1:8001",
-      "manifest": null,
-      "enabled": true
+      "manifest": {
+        "name": "classifier",
+        "version": "2.0.0",
+        "description": "Coffee type classifier using scikit-learn RandomForest",
+        "inputs": [
+          {
+            "name": "sensor_data",
+            "type": "array",
+            "required": true,
+            "description": "6-axis IMU sensor readings"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "label",
+            "type": "string",
+            "description": "Classified coffee type"
+          },
+          {
+            "name": "confidence",
+            "type": "float",
+            "description": "Classification confidence score"
+          }
+        ],
+        "endpoints": {
+          "execute": {
+            "method": "POST",
+            "path": "/classify"
+          },
+          "health": {
+            "method": "GET",
+            "path": "/health"
+          },
+          "settings": {
+            "method": "GET",
+            "path": "/settings"
+          },
+          "update_settings": {
+            "method": "PATCH",
+            "path": "/settings"
+          }
+        },
+        "failure_modes": [
+          "skip",
+          "halt"
+        ]
+      },
+      "enabled": true,
+      "registered_at": "2026-03-06T15:58:23.144086Z"
     },
     "llm": {
       "name": "llm",
       "endpoint": "http://127.0.0.1:8002",
-      "manifest": null,
-      "enabled": true
+      "manifest": {
+        "name": "llm",
+        "version": "2.0.0",
+        "description": "Coffee comment generator using fine-tuned Qwen2.5-0.5B (llama-cpp)",
+        "inputs": [
+          {
+            "name": "coffee_label",
+            "type": "string",
+            "required": true,
+            "description": "Coffee type label from classifier"
+          },
+          {
+            "name": "timestamp",
+            "type": "string",
+            "required": true,
+            "description": "ISO-8601 timestamp of brew"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "response",
+            "type": "string",
+            "description": "Generated witty comment"
+          },
+          {
+            "name": "tokens",
+            "type": "int",
+            "description": "Number of tokens generated"
+          },
+          {
+            "name": "elapsed_s",
+            "type": "float",
+            "description": "Generation time in seconds"
+          },
+          {
+            "name": "tokens_per_s",
+            "type": "float",
+            "description": "Tokens per second"
+          }
+        ],
+        "endpoints": {
+          "execute": {
+            "method": "POST",
+            "path": "/generate"
+          },
+          "health": {
+            "method": "GET",
+            "path": "/health"
+          },
+          "settings": {
+            "method": "GET",
+            "path": "/settings"
+          },
+          "update_settings": {
+            "method": "PATCH",
+            "path": "/settings"
+          }
+        },
+        "failure_modes": [
+          "skip",
+          "halt"
+        ]
+      },
+      "enabled": true,
+      "registered_at": "2026-03-06T15:58:23.144101Z"
     },
     "tts": {
       "name": "tts",
       "endpoint": "http://127.0.0.1:5050",
-      "manifest": null,
-      "enabled": true
+      "manifest": {
+        "name": "tts",
+        "version": "1.0.0",
+        "description": "Offline speech synthesis using Piper TTS",
+        "inputs": [
+          {
+            "name": "text",
+            "type": "string",
+            "required": true,
+            "description": "Text to synthesize"
+          },
+          {
+            "name": "speed",
+            "type": "float",
+            "required": false,
+            "description": "Speech speed multiplier (default 1.0)"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "audio",
+            "type": "binary",
+            "description": "Synthesized WAV audio bytes"
+          }
+        ],
+        "endpoints": {
+          "execute": {
+            "method": "POST",
+            "path": "/synthesize"
+          },
+          "health": {
+            "method": "GET",
+            "path": "/health"
+          },
+          "settings": {
+            "method": "GET",
+            "path": "/settings"
+          },
+          "update_settings": {
+            "method": "PATCH",
+            "path": "/settings"
+          }
+        },
+        "failure_modes": [
+          "skip",
+          "halt"
+        ]
+      },
+      "enabled": true,
+      "registered_at": "2026-03-06T15:58:23.144104Z"
     },
     "remote-save": {
       "name": "remote-save",
       "endpoint": "http://127.0.0.1:7000",
-      "manifest": null,
-      "enabled": true
+      "manifest": {
+        "name": "remote-save",
+        "version": "1.0.0",
+        "description": "Persist brew results to Microsoft Dataverse",
+        "inputs": [
+          {
+            "name": "name",
+            "type": "string",
+            "required": true,
+            "description": "Record name"
+          },
+          {
+            "name": "coffee_type",
+            "type": "string",
+            "required": true,
+            "description": "Coffee type label"
+          },
+          {
+            "name": "confidence",
+            "type": "float",
+            "required": true,
+            "description": "Classification confidence"
+          },
+          {
+            "name": "text",
+            "type": "string",
+            "required": false,
+            "description": "Generated comment text"
+          },
+          {
+            "name": "sensor_data",
+            "type": "array",
+            "required": false,
+            "description": "Raw sensor data for CSV upload"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "record_id",
+            "type": "string",
+            "description": "Dataverse record ID"
+          }
+        ],
+        "endpoints": {
+          "execute": {
+            "method": "POST",
+            "path": "/save"
+          },
+          "health": {
+            "method": "GET",
+            "path": "/health"
+          },
+          "settings": {
+            "method": "GET",
+            "path": "/settings"
+          },
+          "update_settings": {
+            "method": "PATCH",
+            "path": "/settings"
+          }
+        },
+        "failure_modes": [
+          "skip"
+        ]
+      },
+      "enabled": true,
+      "registered_at": "2026-03-06T15:58:23.144106Z"
     }
   },
   "pipeline": [
     {
       "service": "classifier",
       "input_map": {
-        "sensor_data": "$sensor.data"
+        "data": "$sensor.data"
       },
       "on_failure": "skip",
       "retry_count": 1,

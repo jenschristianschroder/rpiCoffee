@@ -121,7 +121,7 @@ async def manifest():
         "version": "2.0.0",
         "description": "Coffee type classifier using scikit-learn RandomForest",
         "inputs": [
-            {"name": "sensor_data", "type": "array", "required": True, "description": "6-axis IMU sensor readings"},
+            {"name": "data", "type": "array", "required": True, "description": "6-axis IMU sensor readings"},
         ],
         "outputs": [
             {"name": "label", "type": "string", "description": "Classified coffee type"},
