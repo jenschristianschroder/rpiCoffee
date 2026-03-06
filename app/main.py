@@ -455,9 +455,10 @@ async def sensor_live_stream():
 
 @app.get("/api/services/status")
 async def services_status():
-    """Check health of all backend services."""
+    """Check health of all backend services (legacy + dynamic registry)."""
     statuses: dict[str, dict] = {}
 
+    # Legacy hardcoded services (backward compat)
     if config.CLASSIFIER_ENABLED:
         statuses["classifier"] = await ClassifierClient.health()
     else:
@@ -490,6 +491,19 @@ async def services_status():
         statuses["sensor"] = {"enabled": True, "healthy": True, "mode": "mock"}
     else:
         statuses["sensor"] = {"enabled": True, "healthy": True, "mode": "serial"}
+
+    # Merge registry health for dynamic services (don't overwrite legacy entries)
+    try:
+        reg_health = await registry.health_check_all()
+        for name, info in reg_health.items():
+            svc_id = name.replace("-", "_")
+            if svc_id not in statuses:
+                statuses[svc_id] = {
+                    "enabled": True,
+                    "healthy": info.get("status") == "healthy",
+                }
+    except Exception:
+        logger.debug("Registry health check failed during services_status", exc_info=True)
 
     return statuses
 
