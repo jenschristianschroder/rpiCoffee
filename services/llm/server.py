@@ -59,6 +59,14 @@ _SETTINGS_REGISTRY: list[dict[str, str]] = [
     {"key": "CTX_SIZE", "name": "Context Size", "description": "Model context window size in tokens", "type": "int"},
     {"key": "THREADS", "name": "Threads", "description": "Number of CPU threads for inference", "type": "int"},
     {"key": "BATCH_SIZE", "name": "Batch Size", "description": "Batch size for prompt evaluation", "type": "int"},
+    {"key": "LLM_MAX_TOKENS", "name": "Max Tokens", "description": "Maximum number of tokens to generate per request", "type": "int"},
+    {"key": "LLM_TEMPERATURE", "name": "Temperature", "description": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)", "type": "float"},
+    {"key": "LLM_TOP_P", "name": "Top-P", "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)", "type": "float"},
+    {"key": "LLM_TTS", "name": "TTS Mode", "description": "Optimize output text for text-to-speech when enabled", "type": "bool"},
+    {"key": "LLM_SYSTEM_MESSAGE", "name": "System Message", "description": "System prompt sent to the model to control tone, style, and output format", "type": "str"},
+    {"key": "LLM_BACKEND", "name": "Backend", "description": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+ / hailo-ollama", "type": "str"},
+    {"key": "LLM_MODEL", "name": "Model", "description": "Ollama model name (only used when LLM_BACKEND=ollama)", "type": "str"},
+    {"key": "LLM_KEEP_ALIVE", "name": "Keep Alive", "description": "Ollama keep_alive: -1 = keep model loaded forever, 0 = unload immediately, or seconds", "type": "int"},
 ]
 
 
@@ -68,6 +76,14 @@ def _load_settings() -> None:
     _runtime["CTX_SIZE"] = int(os.environ.get("CTX", str(DEFAULT_CTX)))
     _runtime["THREADS"] = int(os.environ.get("THREADS", str(DEFAULT_THREADS)))
     _runtime["BATCH_SIZE"] = int(os.environ.get("BATCH", str(DEFAULT_BATCH)))
+    _runtime["LLM_MAX_TOKENS"] = int(os.environ.get("LLM_MAX_TOKENS", "256"))
+    _runtime["LLM_TEMPERATURE"] = float(os.environ.get("LLM_TEMPERATURE", "0.7"))
+    _runtime["LLM_TOP_P"] = float(os.environ.get("LLM_TOP_P", "0.9"))
+    _runtime["LLM_TTS"] = os.environ.get("LLM_TTS", "true").lower() in ("true", "1", "yes")
+    _runtime["LLM_SYSTEM_MESSAGE"] = os.environ.get("LLM_SYSTEM_MESSAGE", SYSTEM_PROMPT)
+    _runtime["LLM_BACKEND"] = os.environ.get("LLM_BACKEND", "llama-cpp")
+    _runtime["LLM_MODEL"] = os.environ.get("LLM_MODEL", "qwen2:1.5b")
+    _runtime["LLM_KEEP_ALIVE"] = int(os.environ.get("LLM_KEEP_ALIVE", "-1"))
 
     if SETTINGS_PATH.exists():
         try:
@@ -80,6 +96,9 @@ def _load_settings() -> None:
                         _runtime[key] = int(persisted[key])
                     elif dtype == "float":
                         _runtime[key] = float(persisted[key])
+                    elif dtype == "bool":
+                        v = persisted[key]
+                        _runtime[key] = v if isinstance(v, bool) else str(v).lower() in ("true", "1", "yes")
                     else:
                         _runtime[key] = str(persisted[key])
         except (json.JSONDecodeError, OSError):
@@ -180,10 +199,10 @@ def build_prompt(user_msg: str, system: str | None = None) -> str:
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
     system: str | None = None
-    max_tokens: int = Field(256, ge=1, le=4096)
-    temperature: float = Field(0.7, ge=0.0, le=2.0)
-    top_p: float = Field(0.9, ge=0.0, le=1.0)
-    tts: bool = False
+    max_tokens: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    tts: bool | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -226,15 +245,22 @@ async def generate(req: GenerateRequest):
     if not req.prompt:
         raise HTTPException(status_code=400, detail="prompt is required")
 
+    # Resolve from runtime defaults when request omits a value
+    max_tokens = req.max_tokens if req.max_tokens is not None else _runtime["LLM_MAX_TOKENS"]
+    temperature = req.temperature if req.temperature is not None else _runtime["LLM_TEMPERATURE"]
+    top_p = req.top_p if req.top_p is not None else _runtime["LLM_TOP_P"]
+    tts = req.tts if req.tts is not None else _runtime["LLM_TTS"]
+    system = req.system if req.system is not None else _runtime["LLM_SYSTEM_MESSAGE"]
+
     day_name, time_24h, _ = parse_timestamp(req.prompt)
-    prompt = build_prompt(req.prompt, system=req.system)
+    prompt = build_prompt(req.prompt, system=system)
     model.reset()
     t0 = time.perf_counter()
     result = model(
         prompt,
-        max_tokens=req.max_tokens,
-        temperature=req.temperature,
-        top_p=req.top_p,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
         stop=["<|im_end|>", "<|im_start|>"],
         echo=False,
         repeat_penalty=1.15,
@@ -243,7 +269,7 @@ async def generate(req: GenerateRequest):
 
     text = result["choices"][0]["text"].strip()
     text = postprocess(text, day_name, time_24h)
-    if req.tts:
+    if tts:
         text = tts_clean(text)
     tokens = result["usage"]["completion_tokens"]
 
@@ -275,6 +301,8 @@ async def update_settings(req: SettingsUpdate):
             _runtime[key] = int(value)
         elif dtype == "float":
             _runtime[key] = float(value)
+        elif dtype == "bool":
+            _runtime[key] = value if isinstance(value, bool) else str(value).lower() in ("true", "1", "yes")
         else:
             _runtime[key] = str(value)
         updated.append(key)

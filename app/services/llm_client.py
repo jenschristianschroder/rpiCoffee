@@ -51,16 +51,12 @@ class LLMClient:
     async def generate(
         coffee_label: str,
         timestamp: datetime | None = None,
-        tts: bool | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-        top_p: float | None = None,
     ) -> dict[str, Any] | None:
         """
         Generate a natural-language sentence about the coffee type.
 
-        Parameters default to the corresponding config values
-        (LLM_TTS, LLM_MAX_TOKENS, LLM_TEMPERATURE, LLM_TOP_P).
+        For the llama-cpp backend the service owns all generation defaults;
+        for the Ollama backend, params are sent from app config.
 
         Returns
         -------
@@ -73,16 +69,6 @@ class LLMClient:
         if timestamp is None:
             timestamp = datetime.now().astimezone()
 
-        # Resolve from config if not explicitly provided
-        if tts is None:
-            tts = config.LLM_TTS
-        if max_tokens is None:
-            max_tokens = config.LLM_MAX_TOKENS
-        if temperature is None:
-            temperature = config.LLM_TEMPERATURE
-        if top_p is None:
-            top_p = config.LLM_TOP_P
-
         prompt = f"Write a statement about {coffee_label.title()} at {timestamp.isoformat()}"
 
         # ── Ollama / Hailo backend ──────────────────────────────
@@ -92,27 +78,21 @@ class LLMClient:
                 model=config.LLM_MODEL,
                 prompt=prompt,
                 system=config.LLM_SYSTEM_MESSAGE,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                tts=tts,
+                max_tokens=config.LLM_MAX_TOKENS,
+                temperature=config.LLM_TEMPERATURE,
+                top_p=config.LLM_TOP_P,
+                tts=config.LLM_TTS,
                 keep_alive=config.LLM_KEEP_ALIVE,
                 timeout=_TIMEOUT,
             )
 
         # ── Default: llama-cpp custom server ────────────────────
+        # Generation params are owned by the service (via its /settings endpoint)
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 r = await client.post(
                     f"{LLMClient._endpoint()}/generate",
-                    json={
-                        "prompt": prompt,
-                        "system": config.LLM_SYSTEM_MESSAGE,
-                        "max_tokens": max_tokens,
-                        "temperature": temperature,
-                        "top_p": top_p,
-                        "tts": tts,
-                    },
+                    json={"prompt": prompt},
                 )
                 r.raise_for_status()
                 result = r.json()

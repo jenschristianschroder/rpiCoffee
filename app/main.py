@@ -515,6 +515,11 @@ async def service_settings_update(name: str, request: Request):
     result = await client.update_settings(settings)
     if result is None:
         return {"error": f"Failed to update settings on {name}"}
+    # Sync any keys that also exist in app config
+    _APP_CONFIG_KEYS = {"LLM_BACKEND", "LLM_MODEL", "LLM_KEEP_ALIVE"}
+    sync = {k: v for k, v in settings.items() if k in _APP_CONFIG_KEYS}
+    if sync:
+        config.update_many(sync)
     return result
 
 
