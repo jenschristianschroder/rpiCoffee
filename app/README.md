@@ -1,6 +1,6 @@
 # rpiCoffee — Main Application
 
-FastAPI application that orchestrates the brew pipeline, serves the kiosk UI and admin panel, and manages the sensor lifecycle. Runs as a Docker container alongside the backend services.
+FastAPI application that orchestrates the brew pipeline, serves the kiosk UI and admin panel, and manages the sensor lifecycle. Runs **natively on the host** (not in Docker) for direct USB sensor access.
 
 ## Overview
 
@@ -164,20 +164,23 @@ Settings changes that affect the sensor (mode, device ID, thresholds, etc.) auto
 
 ## Running Locally
 
-The app runs as part of the Docker Compose stack. From the repository root:
-
 ```bash
-# Start the app (and all enabled backend services)
-docker compose --profile classifier --profile llm --profile tts up -d
+# From the repository root
+cd app
+pip install -r requirements.txt
 
-# View app logs
-docker compose logs -f app
+# Set environment for local development
+export SENSOR_MODE=mock
+export CLASSIFIER_ENDPOINT=http://localhost:8001
+export LLM_ENDPOINT=http://localhost:8002
+export TTS_ENDPOINT=http://localhost:5050
+export SETTINGS_DIR=../data
+export DATA_DIR=../data
 
-# Rebuild after code changes
-docker compose up -d --build app
+uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-The app defaults to `SENSOR_MODE=mock`, which replays sample CSV files. See the [root README](../README.md) for full configuration options.
+Or use the provided `run-local.bat` (Windows) which starts all services together.
 
 ## Dependencies
 

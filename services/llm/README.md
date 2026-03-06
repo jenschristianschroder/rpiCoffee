@@ -176,16 +176,13 @@ python merge_and_export.py --quant Q5_K_M
 
 ## Step 4 – Test Locally (Optional)
 
-The LLM is managed by `docker-compose.yml` under the `llm` profile:
-
 ```bash
-docker compose --profile llm up -d
+pip install llama-cpp-python
+python server.py --model coffee-gguf/coffee-Q4_K_M.gguf
 ```
 
-Test with curl:
-
 ```bash
-curl -X POST http://localhost:8002/generate \
+curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Write a statement about Espresso at 2026-03-01T08:00:00"}'
 ```
@@ -196,7 +193,7 @@ Add `"tts": true` to optimise the response for text-to-speech output
 (expands times to spoken form, strips quotes and parentheses):
 
 ```bash
-curl -X POST http://localhost:8002/generate \
+curl -X POST http://localhost:8000/generate \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Write a statement about Espresso at 2026-03-01T08:00:00", "tts": true}'
 ```

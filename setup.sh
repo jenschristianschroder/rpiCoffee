@@ -2,12 +2,13 @@
 #
 # rpiCoffee – Comprehensive Raspberry Pi 5 Setup Script
 #
-# Installs system dependencies, downloads models, builds Docker images,
-# and configures .env.
+# Installs all dependencies, downloads models, builds Docker images,
+# configures .env, sets up USB permissions, and optionally creates
+# systemd services for auto-start.
 #
 # Architecture:
-#   All services (including the main app) run as Docker containers.
-#   Backend services are gated by Docker Compose profiles.
+#   App runs NATIVELY (Python venv) for direct PicoQuake USB access.
+#   Classifier, LLM, TTS, Remote-Save run as Docker containers.
 #
 set -euo pipefail
 
@@ -126,8 +127,11 @@ echo ""
 echo -e "${BOLD}This script will:${NC}"
 echo "  1. Install system packages (Docker, Python 3, build tools)"
 echo "  2. Configure .env environment files"
-echo "  3. Download LLM model (~350 MB) and TTS voice (~100 MB)"
-echo "  4. Build Docker images for all enabled services (~20-40 min)"
+echo "  3. Create a Python virtual environment (.venv)"
+echo "  4. Download LLM model (~350 MB) and TTS voice (~100 MB)"
+echo "  5. Build Docker images for enabled services (~20-40 min)"
+echo "  6. Set up USB device permissions for PicoQuake sensor"
+echo "  7. Optionally create systemd services for auto-start"
 echo ""
 echo "  Estimated time: 30–45 minutes (dominated by LLM Docker build)"
 echo ""
@@ -332,9 +336,40 @@ if [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]]; then
 fi
 
 # ════════════════════════════════════════════════════════════════
-#  Phase 3: Model Downloads
+#  Phase 3: Python Virtual Environment
 # ════════════════════════════════════════════════════════════════
-header "Phase 3 · Model downloads"
+header "Phase 3 · Python virtual environment"
+
+VENV_DIR="$SCRIPT_DIR/.venv"
+if [[ -d "$VENV_DIR" ]]; then
+    info "Virtual environment already exists at .venv/"
+else
+    python3 -m venv "$VENV_DIR"
+    ok "Created virtual environment at .venv/"
+fi
+
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+info "Installing app dependencies..."
+if pip install --upgrade pip >> "$LOG_FILE" 2>&1 && \
+   pip install -r app/requirements.txt >> "$LOG_FILE" 2>&1; then
+    PKG_COUNT=$(pip list --format=freeze 2>/dev/null | wc -l)
+    ok "Installed $PKG_COUNT packages"
+else
+    fail "pip install failed — check $LOG_FILE"
+fi
+
+# Verify picoquake
+if python -c "import picoquake" 2>/dev/null; then
+    ok "picoquake package OK"
+else
+    warn "picoquake package not importable — sensor mode 'picoquake' may fail"
+fi
+
+# ════════════════════════════════════════════════════════════════
+#  Phase 4: Model Downloads
+# ════════════════════════════════════════════════════════════════
+header "Phase 4 · Model downloads"
 
 # LLM model
 GGUF_PATH="services/llm/coffee-gguf/coffee-Q4_K_M.gguf"
@@ -429,12 +464,12 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════
-#  Phase 4: Docker Image Builds
+#  Phase 5: Docker Image Builds
 # ════════════════════════════════════════════════════════════════
-header "Phase 4 · Docker image builds"
+header "Phase 5 · Docker image builds"
 
-# Ensure host data directories exist (volume-mounted into containers)
-mkdir -p "$SCRIPT_DIR/data/training" "$SCRIPT_DIR/data/models" "$SCRIPT_DIR/data/audio"
+# Ensure host data directories exist (app/data is volume-mounted into containers)
+mkdir -p "$SCRIPT_DIR/app/data/training" "$SCRIPT_DIR/app/data/models" "$SCRIPT_DIR/app/data/audio"
 ok "Data directories created"
 
 build_service() {
@@ -474,18 +509,284 @@ else
     info "llm disabled — skipping build"
 fi
 
-# Build the main app image
-info "Building app..."
-if docker compose build app 2>&1 | tee -a "$LOG_FILE"; then
-    ok "app image built"
+# ════════════════════════════════════════════════════════════════
+#  Phase 6: USB Device Setup
+# ════════════════════════════════════════════════════════════════
+header "Phase 6 · USB device setup"
+
+if [[ "${SENSOR_MODE:-mock}" == "picoquake" ]]; then
+    UDEV_RULE='/etc/udev/rules.d/99-picoquake.rules'
+    RULE_CONTENT='SUBSYSTEM=="tty", ATTRS{idProduct}=="000a", ATTRS{idVendor}=="2e8a", MODE="0666", SYMLINK+="picoquake"'
+    # Disable USB autosuspend for the PicoQuake to prevent connection drops
+    AUTOSUSPEND_RULE='/etc/udev/rules.d/99-picoquake-power.rules'
+    AUTOSUSPEND_CONTENT='ACTION=="add", SUBSYSTEM=="usb", ATTRS{idProduct}=="000a", ATTRS{idVendor}=="2e8a", TEST=="power/control", ATTR{power/control}="on"'
+
+    if [[ -f "$UDEV_RULE" ]]; then
+        ok "udev rule already installed"
+    else
+        echo "$RULE_CONTENT" | sudo tee "$UDEV_RULE" > /dev/null
+        ok "udev rule installed at $UDEV_RULE"
+    fi
+
+    if [[ -f "$AUTOSUSPEND_RULE" ]]; then
+        ok "USB autosuspend rule already installed"
+    else
+        echo "$AUTOSUSPEND_CONTENT" | sudo tee "$AUTOSUSPEND_RULE" > /dev/null
+        ok "USB autosuspend disabled for PicoQuake"
+    fi
+
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger
+
+    if ls /dev/ttyACM* 1>/dev/null 2>&1; then
+        ok "PicoQuake USB device detected"
+    else
+        warn "No /dev/ttyACM* device found — connect PicoQuake before starting"
+    fi
 else
-    fail "app image build failed — check $LOG_FILE"
+    info "Sensor mode is '${SENSOR_MODE:-mock}' — skipping USB setup"
 fi
 
 # ════════════════════════════════════════════════════════════════
-#  Phase 5: Data Directory Bootstrap
+#  Phase 7: Systemd Service (Optional)
 # ════════════════════════════════════════════════════════════════
-header "Phase 5 · Data directory bootstrap"
+header "Phase 7 · Systemd auto-start"
+
+prompt_yn "Enable auto-start on boot?" ENABLE_SYSTEMD "y"
+
+if [[ "$ENABLE_SYSTEMD" == "true" ]]; then
+    # Build the profile flags string for docker compose
+    PROFILES=""
+    [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && PROFILES="$PROFILES --profile classifier"
+    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && PROFILES="$PROFILES --profile llm"
+    [[ "${TTS_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile tts"
+    [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && PROFILES="$PROFILES --profile remote-save"
+    PROFILES="${PROFILES# }"  # trim leading space
+
+    # Docker services unit
+    sudo tee /etc/systemd/system/rpicoffee-services.service > /dev/null <<EOF
+[Unit]
+Description=rpiCoffee Docker Services
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${SCRIPT_DIR}
+ExecStart=/usr/bin/docker compose ${PROFILES} up -d --build
+ExecStop=/usr/bin/docker compose ${PROFILES} down
+User=${USER}
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # hailo-ollama unit (only when using ollama backend)
+    if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
+        HAILO_BIN="$(command -v hailo-ollama 2>/dev/null || echo /usr/bin/hailo-ollama)"
+        sudo tee /etc/systemd/system/rpicoffee-hailo-ollama.service > /dev/null <<EOF
+[Unit]
+Description=rpiCoffee hailo-ollama LLM Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${HAILO_BIN}
+Restart=on-failure
+RestartSec=5
+User=${USER}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        ok "hailo-ollama systemd service created"
+        HAILO_UNIT_CREATED=true
+    else
+        # Ensure stale unit is disabled if switching away from ollama
+        if systemctl is-enabled rpicoffee-hailo-ollama &>/dev/null 2>&1; then
+            sudo systemctl stop rpicoffee-hailo-ollama 2>/dev/null || true
+            sudo systemctl disable rpicoffee-hailo-ollama 2>/dev/null || true
+            info "Disabled stale rpicoffee-hailo-ollama service"
+        fi
+        HAILO_UNIT_CREATED=false
+    fi
+
+    # Sudoers drop-in for hailo-ollama management from the app
+    sudo tee /etc/sudoers.d/rpicoffee-hailo-ollama > /dev/null <<EOF
+${USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl start rpicoffee-hailo-ollama, /usr/bin/systemctl stop rpicoffee-hailo-ollama, /usr/bin/systemctl enable rpicoffee-hailo-ollama, /usr/bin/systemctl disable rpicoffee-hailo-ollama, /usr/bin/systemctl is-active rpicoffee-hailo-ollama, /usr/bin/systemctl is-enabled rpicoffee-hailo-ollama
+EOF
+    sudo chmod 0440 /etc/sudoers.d/rpicoffee-hailo-ollama
+    ok "Sudoers drop-in for hailo-ollama management created"
+
+    # App unit
+    HAILO_AFTER=""
+    HAILO_WANTS=""
+    if [[ "${HAILO_UNIT_CREATED:-false}" == "true" ]]; then
+        HAILO_AFTER=" rpicoffee-hailo-ollama.service"
+        HAILO_WANTS="Wants=rpicoffee-hailo-ollama.service"
+    fi
+    sudo tee /etc/systemd/system/rpicoffee-app.service > /dev/null <<EOF
+[Unit]
+Description=rpiCoffee Application
+After=rpicoffee-services.service${HAILO_AFTER}
+Requires=rpicoffee-services.service
+${HAILO_WANTS}
+
+[Service]
+Type=simple
+WorkingDirectory=${SCRIPT_DIR}/app
+Environment="PATH=${VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=${SCRIPT_DIR}/.env
+ExecStart=${VENV_DIR}/bin/uvicorn main:app --host 0.0.0.0 --port \${APP_PORT}
+Restart=on-failure
+RestartSec=5
+User=${USER}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Kiosk (Chromium auto-launch) unit
+    KIOSK_URL="http://localhost:${APP_PORT:-8080}"
+
+    # Create the kiosk launcher helper script
+    cat > "${SCRIPT_DIR}/kiosk.sh" <<'KIOSK'
+#!/usr/bin/env bash
+#
+# rpiCoffee – Kiosk launcher
+#
+# Waits for the rpiCoffee app to become healthy, then launches
+# Chromium in app mode (maximised, no browser chrome).
+#
+# Chromium runs in the FOREGROUND (via exec) so that systemd
+# keeps the service active for the lifetime of the browser process.
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+set -a; source "$SCRIPT_DIR/.env"; set +a
+
+APP_URL="http://localhost:${APP_PORT:-8080}"
+
+# ── Wait for the X display to be available ──
+MAX_DISPLAY_WAIT=60
+for (( i=1; i<=MAX_DISPLAY_WAIT/2; i++ )); do
+    if [ -S /tmp/.X11-unix/X0 ]; then
+        break
+    fi
+    echo "[kiosk] Waiting for X display... ($i)"
+    sleep 2
+done
+if [ ! -S /tmp/.X11-unix/X0 ]; then
+    echo "[kiosk] ERROR: X display not available after ${MAX_DISPLAY_WAIT}s" >&2
+    exit 1
+fi
+
+# ── Wait for PipeWire audio socket ──
+_PW_SOCKET="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pipewire-0"
+_PW_MAX=30
+_PW_ELAPSED=0
+echo "[kiosk] Waiting for PipeWire socket at $_PW_SOCKET ..."
+while [ ! -S "$_PW_SOCKET" ]; do
+    sleep 2
+    _PW_ELAPSED=$((_PW_ELAPSED + 2))
+    if [ "$_PW_ELAPSED" -ge "$_PW_MAX" ]; then
+        echo "[kiosk] WARNING: PipeWire socket not found after ${_PW_MAX}s – audio may not work"
+        break
+    fi
+done
+if [ -S "$_PW_SOCKET" ]; then
+    echo "[kiosk] PipeWire socket ready"
+fi
+
+# ── Wait for the rpiCoffee web app to respond ──
+MAX_WAIT=120   # seconds
+ELAPSED=0
+
+echo "[kiosk] Waiting for rpiCoffee app at $APP_URL ..."
+while ! curl -sf --max-time 2 "$APP_URL" > /dev/null 2>&1; do
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
+    if (( ELAPSED >= MAX_WAIT )); then
+        echo "[kiosk] App did not become ready after ${MAX_WAIT}s – aborting"
+        exit 1
+    fi
+done
+echo "[kiosk] App is ready – launching Chromium"
+
+# ── Detect chromium binary (Trixie: chromium, older: chromium-browser) ──
+CHROMIUM_BIN=$(command -v chromium-browser 2>/dev/null || command -v chromium 2>/dev/null)
+if [[ -z "$CHROMIUM_BIN" ]]; then
+    echo "[kiosk] ERROR: No chromium binary found" >&2
+    exit 1
+fi
+
+# ── Clean up crash flags so Chromium doesn't show a restore prompt ──
+CHROMIUM_PREFS="$HOME/.config/chromium/Default/Preferences"
+if [[ -f "$CHROMIUM_PREFS" ]]; then
+    sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' "$CHROMIUM_PREFS"
+    sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/'   "$CHROMIUM_PREFS"
+fi
+
+# ── Launch Chromium in the foreground (exec replaces this shell) ──
+export DISPLAY=:0
+exec $CHROMIUM_BIN \
+  --kiosk "$APP_URL" \
+  --autoplay-policy=no-user-gesture-required \
+  --password-store=basic \
+  --disable-infobars \
+  --noerrdialogs \
+  --disable-session-crashed-bubble \
+  --check-for-update-interval=31536000
+KIOSK
+    chmod +x "${SCRIPT_DIR}/kiosk.sh"
+    ok "Created kiosk launcher script (kiosk.sh)"
+
+    _USER_ID=$(id -u "${USER}")
+    sudo tee /etc/systemd/system/rpicoffee-kiosk.service > /dev/null <<EOF
+[Unit]
+Description=rpiCoffee Chromium Kiosk
+After=rpicoffee-app.service
+Requires=rpicoffee-app.service
+
+[Service]
+Type=simple
+WorkingDirectory=${SCRIPT_DIR}
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/${USER}/.Xauthority"
+Environment="XDG_RUNTIME_DIR=/run/user/${_USER_ID}"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${_USER_ID}/bus"
+ExecStartPre=/bin/sleep 5
+ExecStart=${SCRIPT_DIR}/kiosk.sh
+Restart=on-failure
+RestartSec=10
+User=${USER}
+
+[Install]
+WantedBy=graphical.target
+EOF
+    ok "Kiosk systemd service created"
+
+    sudo systemctl daemon-reload
+    ENABLE_UNITS="rpicoffee-services rpicoffee-app rpicoffee-kiosk"
+    if [[ "${HAILO_UNIT_CREATED:-false}" == "true" ]]; then
+        ENABLE_UNITS="rpicoffee-hailo-ollama $ENABLE_UNITS"
+    fi
+    # shellcheck disable=SC2086
+    sudo systemctl enable $ENABLE_UNITS
+    ok "Systemd services created and enabled"
+else
+    info "Skipping systemd setup"
+fi
+
+# ════════════════════════════════════════════════════════════════
+#  Phase 8: Data Directory Bootstrap
+# ════════════════════════════════════════════════════════════════
+header "Phase 8 · Data directory bootstrap"
 
 mkdir -p data data/audio
 ok "data/ and data/audio/ directories ready"
@@ -507,7 +808,7 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════
-#  Phase 6: Post-Setup Summary
+#  Phase 9: Post-Setup Summary
 # ════════════════════════════════════════════════════════════════
 
 # Detect IP
@@ -522,6 +823,10 @@ echo ""
 
 # System packages
 ok "System packages installed (Docker, Python 3, build tools)"
+
+# Venv
+PKG_COUNT=$(pip list --format=freeze 2>/dev/null | wc -l)
+ok "Python venv at .venv/ ($PKG_COUNT packages)"
 
 # Models
 if [[ -f "$GGUF_PATH" ]]; then
@@ -544,6 +849,17 @@ if [[ -n "$IMAGES" ]]; then
     echo "$IMAGES" | while read -r line; do echo "       $line"; done
 fi
 
+# USB sensor
+if [[ "${SENSOR_MODE:-mock}" == "picoquake" ]]; then
+    if ls /dev/ttyACM* 1>/dev/null 2>&1; then
+        ok "USB sensor: detected, udev rule installed"
+    else
+        warn "USB sensor: udev rule installed but no device connected"
+    fi
+else
+    info "USB sensor: not configured (mode=${SENSOR_MODE:-mock})"
+fi
+
 # hailo-ollama
 if [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
     if [[ "${HAILO_OLLAMA_INSTALLED:-false}" == "true" ]]; then
@@ -551,6 +867,17 @@ if [[ "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then
     else
         warn "hailo-ollama: NOT installed — download from https://hailo.ai/developer-zone/"
     fi
+    if [[ "${HAILO_UNIT_CREATED:-false}" == "true" ]]; then
+        ok "hailo-ollama: systemd service enabled (auto-start at boot)"
+    fi
+fi
+
+# Systemd
+if [[ "${ENABLE_SYSTEMD:-false}" == "true" ]]; then
+    ok "Systemd auto-start: enabled"
+    ok "Kiosk mode: Chromium will open http://localhost:${APP_PORT:-8080} on boot"
+else
+    info "Systemd auto-start: not configured"
 fi
 
 # Warnings
@@ -574,7 +901,11 @@ fi
 echo ""
 echo -e "  ${BOLD}Access:${NC} http://${PI_IP}:${APP_PORT:-8080}/admin/"
 echo ""
-echo "  Next: run ${BOLD}./start.sh${NC} to launch all services"
+if [[ "${ENABLE_SYSTEMD:-false}" == "true" ]]; then
+    echo "  Next: reboot, or run ${BOLD}./start.sh${NC} now"
+else
+    echo "  Next: run ${BOLD}./start.sh${NC} to launch"
+fi
 
 if $GROUP_CHANGED; then
     echo "        (open a new shell or reboot first for group changes)"

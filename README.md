@@ -18,8 +18,10 @@ rpiCoffee is an IoT kiosk system that attaches a vibration sensor to a coffee ma
 graph TB
     subgraph "Raspberry Pi 5"
         sensor["PicoQuake USB Sensor<br/>(6-axis IMU)"]
-        subgraph "Docker Containers"
+        subgraph "Native (host)"
             app["Main App<br/>FastAPI :8080<br/><i>Kiosk UI · Admin Panel · Pipeline</i>"]
+        end
+        subgraph "Docker Containers"
             classifier["Classifier<br/>scikit-learn :8001"]
             llm["LLM<br/>llama-cpp :8002"]
             tts["TTS<br/>Piper :5050"]
@@ -29,7 +31,7 @@ graph TB
         speaker["Speaker"]
     end
 
-    sensor -- "USB (device passthrough)" --> app
+    sensor -- "USB" --> app
     app -- "POST /classify" --> classifier
     app -- "POST /generate" --> llm
     app -. "POST /generate<br/>(alternative)" .-> hailo
@@ -38,9 +40,7 @@ graph TB
     tts -- "WAV audio" --> speaker
 ```
 
-All services run as Docker containers, managed by Docker Compose. Backend services are gated by Docker Compose profiles so only enabled services start. The main app always starts.
-
-For Raspberry Pi production with a real PicoQuake sensor, USB device passthrough is configured via `docker-compose.override.yml` (see the provided example). For local development, `SENSOR_MODE=mock` replays sample CSV files with no hardware needed.
+The main app runs **natively** on the host (not in Docker) for direct USB sensor access. Backend services run as Docker containers, each gated by a Docker Compose profile so only enabled services start.
 
 An alternative LLM backend uses the **Hailo AI HAT+ 2** NPU accelerator via `hailo-ollama` for hardware-accelerated inference.
 
@@ -54,16 +54,14 @@ An alternative LLM backend uses the **Hailo AI HAT+ 2** NPU accelerator via `hai
 | USB speaker (e.g. Jabra) | Play TTS audio | Recommended |
 | Touchscreen display | Kiosk UI with virtual keyboard | Optional |
 
-## Quick Start
-
-All services run via Docker — no Python virtual environments or native installs required.
+## Quick Start — Raspberry Pi
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/jenschristianschroder/rpiCoffee.git
 cd rpiCoffee
 
-# 2. Run the interactive installer
+# 2. Run the interactive installer (8 phases)
 ./setup.sh
 
 # 3. Start all services
@@ -73,73 +71,54 @@ cd rpiCoffee
 # http://<pi-ip>:8080
 ```
 
-Or start directly with Docker Compose:
-
-```bash
-docker compose --profile classifier --profile llm --profile tts --profile remote-save up -d
-```
-
 ### What `setup.sh` does
 
 | Phase | Description |
 |-------|-------------|
 | 0 | Pre-flight checks (architecture, disk space, internet) |
-| 1 | System dependencies (Docker, Python 3, build tools) |
+| 1 | System dependencies (Docker, Python 3, Chromium, build tools) |
 | 2 | `.env` configuration + optional Dataverse credentials |
-| 3 | Model downloads (LLM GGUF ~350 MB, TTS voice ~100 MB) |
-| 4 | Docker image builds (app, classifier, LLM, TTS, remote-save) |
-| 5 | Data directory bootstrap |
+| 3 | Python virtual environment + pip install |
+| 4 | Model downloads (LLM GGUF ~350 MB, TTS voice ~100 MB) |
+| 5 | Docker image builds (classifier, LLM, TTS, remote-save) |
+| 6 | USB device setup (udev rules for PicoQuake, autosuspend disabled) |
+| 7 | Optional systemd services + Chromium kiosk mode |
+| 8 | Data directory bootstrap |
 
 ### Management scripts
 
 | Script | Description |
 |--------|-------------|
-| `start.sh` | Start all Docker services (by profile), wait for health checks |
-| `stop.sh` | Stop all Docker services |
+| `start.sh` | Start Docker services (by profile), wait for health checks, launch app natively |
+| `stop.sh` | Stop app + Docker services + hailo-ollama |
 | `status.sh` | Full status dashboard with health checks (supports `--json`) |
 
-### Raspberry Pi USB sensor
+## Quick Start — Local Development (Windows)
 
-To use the real PicoQuake USB sensor on a Pi, create a `docker-compose.override.yml` from the provided example:
+No hardware required — the mock sensor replays sample CSV files.
 
 ```bash
-cp docker-compose.override.yml.example docker-compose.override.yml
+# 1. Create and activate a virtual environment
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r app\requirements.txt
+pip install -r services\classifier\requirements.txt
+pip install -r services\llm\requirements-serve.txt
+
+# 2. Start all services in separate terminal windows
+run-local.bat
 ```
 
-This passes the USB device into the app container and sets `SENSOR_MODE=picoquake`. You may also need udev rules for the PicoQuake — see the [PicoQuake setup](#picoquake-usb-setup) section.
+This starts the classifier, LLM server, and main app with `SENSOR_MODE=mock`. TTS is skipped on Windows (requires Piper/Linux).
 
-## Local Development
-
-No hardware required — the mock sensor replays sample CSV files. All you need is Docker.
+**Alternative** — run only the main app natively while backend services run in Docker (useful for USB sensor testing):
 
 ```bash
-# Start all services (app + backends)
-docker compose --profile classifier --profile llm --profile tts --profile remote-save up -d
+# Start Docker backends
+docker compose --profile classifier --profile llm --profile tts up -d
 
-# Open the admin UI
-# http://localhost:8080/admin/
-```
-
-To rebuild after code changes:
-
-```bash
-docker compose up -d --build
-```
-
-### Viewing Logs
-
-```bash
-# Follow all service logs
-docker compose logs -f
-
-# Follow a single service
-docker compose logs -f app
-
-# Last 100 lines of a container
-docker logs --tail 100 rpicoffee-app
-
-# Logs from the last 5 minutes
-docker compose logs --since 5m
+# Run the app on the host
+run-app-local.bat
 ```
 
 ## Configuration
@@ -226,11 +205,10 @@ Access is protected by a PIN (default: `1234`). Sessions expire after 10 minutes
 
 ```
 rpiCoffee/
-├── app/                        # Main FastAPI application (Docker)
+├── app/                        # Main FastAPI application (runs natively)
 │   ├── main.py                 # App entry point, API routes, auto-trigger loop
 │   ├── pipeline.py             # 5-stage brew pipeline orchestrator
 │   ├── config.py               # Layered configuration manager
-│   ├── Dockerfile              # App container image
 │   ├── admin/                  # Admin panel (routes + Jinja2 templates)
 │   ├── sensor/                 # Sensor abstraction (mock, picoquake, serial)
 │   └── services/               # HTTP clients for backend services
@@ -240,34 +218,12 @@ rpiCoffee/
 │   ├── tts/                    # Piper TTS server (Docker)
 │   └── remote-save/            # Dataverse upload service (Docker)
 ├── data/                       # Sample CSVs, settings, training data, audio
-├── docker-compose.yml          # All service definitions (app + profile-gated backends)
-├── docker-compose.override.yml.example  # Pi production overrides (USB sensor)
-├── setup.sh                    # Interactive setup (env config + Docker builds)
-├── start.sh / stop.sh          # Docker Compose lifecycle management
-└── status.sh                   # Health check dashboard
-```
-
-## PicoQuake USB Setup
-
-On a Raspberry Pi with a real PicoQuake sensor, create udev rules so the device is accessible from Docker:
-
-```bash
-# udev rule for PicoQuake (world-readable + symlink)
-echo 'SUBSYSTEM=="tty", ATTRS{idProduct}=="000a", ATTRS{idVendor}=="2e8a", MODE="0666", SYMLINK+="picoquake"' \
-  | sudo tee /etc/udev/rules.d/99-picoquake.rules
-
-# Disable USB autosuspend to prevent connection drops
-echo 'ACTION=="add", SUBSYSTEM=="usb", ATTRS{idProduct}=="000a", ATTRS{idVendor}=="2e8a", TEST=="power/control", ATTR{power/control}="on"' \
-  | sudo tee /etc/udev/rules.d/99-picoquake-power.rules
-
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
-
-Then copy the override file and start:
-
-```bash
-cp docker-compose.override.yml.example docker-compose.override.yml
-./start.sh
+├── docker-compose.yml          # Backend service definitions (profile-gated)
+├── setup.sh                    # Interactive Raspberry Pi installer
+├── start.sh / stop.sh          # Service lifecycle management
+├── status.sh                   # Health check dashboard
+├── run-local.bat               # Windows: start all services locally
+└── run-app-local.bat           # Windows: app on host + Docker backends
 ```
 
 ## License
