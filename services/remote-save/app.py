@@ -100,16 +100,20 @@ def _env(name: str) -> str:
 # ── Request / Response models ───────────────────────────────────────────────
 class SaveRequest(BaseModel):
     name: str = Field(..., description="Record name")
-    data: str = Field(..., description="Text content to store in the record")
-    text: str = Field(..., description="Text content for the jenssch_text column")
-    confidence: float = Field(..., description="Classification confidence score")
+    data: str = Field("", description="Text content to store in the record")
+    text: str = Field("", description="Text content for the jenssch_text column")
+    confidence: float = Field(0.0, description="Classification confidence score")
     coffee_type: str = Field(
         ...,
         description="Coffee type (Black, Espresso, or Cappuccino)",
     )
+    sensor_data: list[dict[str, Any]] | None = Field(
+        None,
+        description="Raw sensor data array — service converts to CSV + base64 automatically",
+    )
     file_content: str | None = Field(
         None,
-        description="Base64-encoded file bytes to upload to the file column",
+        description="Base64-encoded file bytes to upload to the file column (legacy)",
     )
     file_name: str | None = Field(
         None,
@@ -192,6 +196,23 @@ def upload_file(
     with file_path.open("rb") as payload:
         response = requests.patch(url, data=payload, headers=headers, timeout=120)
     response.raise_for_status()
+
+
+# ── CSV helpers ─────────────────────────────────────────────────────────────
+
+_CSV_COLUMNS = ["label", "elapsed_s", "acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z"]
+
+
+def _sensor_data_to_csv(sensor_data: list[dict[str, Any]], label: str) -> str:
+    """Convert raw sensor dicts to a CSV string with the classification label."""
+    import csv
+    import io
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for row in sensor_data:
+        writer.writerow({"label": label, **row})
+    return buf.getvalue()
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -295,11 +316,23 @@ def save(req: SaveRequest) -> SaveResponse:
             detail=f"Failed to create Dataverse record: {exc}",
         ) from exc
 
-    # Upload file content if provided
-    if req.file_content:
-        file_name = req.file_name or f"{req.name}.txt"
+    # Upload file content if provided (or auto-generate from sensor_data)
+    file_content = req.file_content
+    file_name = req.file_name
+
+    if not file_content and req.sensor_data:
+        csv_str = _sensor_data_to_csv(req.sensor_data, coffee_key)
+        data_field = csv_str  # also store CSV in the data column
+        file_content = base64.b64encode(csv_str.encode("utf-8")).decode("ascii")
+        file_name = file_name or f"{req.name}.csv"
+        # Update data column with CSV if it was empty
+        if not req.data:
+            record_payload[col_data] = data_field
+
+    if file_content:
+        file_name = file_name or f"{req.name}.txt"
         try:
-            file_bytes = base64.b64decode(req.file_content)
+            file_bytes = base64.b64decode(file_content)
         except Exception as exc:
             raise HTTPException(
                 status_code=400,

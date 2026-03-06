@@ -159,7 +159,9 @@ def _tts_clean(text: str) -> str:
 # ── Request / Response models ────────────────────────────────────
 
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=1)
+    prompt: str | None = Field(None, min_length=1)
+    coffee_label: str | None = Field(None, description="Coffee type label — builds prompt automatically")
+    timestamp: str | None = Field(None, description="ISO-8601 timestamp — used with coffee_label")
     system: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
@@ -280,8 +282,14 @@ async def health():
 
 @app.post("/generate")
 async def generate(req: GenerateRequest):
-    if not req.prompt:
-        raise HTTPException(status_code=400, detail="prompt is required")
+    # Accept either a raw prompt or structured coffee_label + timestamp
+    user_msg = req.prompt
+    if not user_msg:
+        if req.coffee_label:
+            ts = req.timestamp or datetime.now().astimezone().isoformat()
+            user_msg = f"Write a statement about {req.coffee_label.title()} at {ts}"
+        else:
+            raise HTTPException(status_code=400, detail="prompt or coffee_label is required")
 
     max_tokens = req.max_tokens if req.max_tokens is not None else _runtime["LLM_MAX_TOKENS"]
     temperature = req.temperature if req.temperature is not None else _runtime["LLM_TEMPERATURE"]
@@ -293,7 +301,7 @@ async def generate(req: GenerateRequest):
 
     try:
         raw_text, metadata = await _ollama_generate(
-            req.prompt,
+            user_msg,
             system=system,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -316,7 +324,7 @@ async def generate(req: GenerateRequest):
     tokens_per_s = (eval_count / (eval_ns / 1e9)) if eval_ns else 0
 
     # Post-process
-    day_name, time_24h = _parse_timestamp(req.prompt)
+    day_name, time_24h = _parse_timestamp(user_msg)
     text = raw_text.strip()
     text = _postprocess(text, day_name, time_24h)
     if tts:

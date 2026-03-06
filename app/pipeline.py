@@ -1,15 +1,17 @@
 """
 Pipeline orchestrator.
 
-Executes the full coffee pipeline:
-  1. Sensor      → collect 30s of IMU data
-  2. classifier  → classify coffee type
-  3. llm         → generate a witty statement
-  4. tts         → synthesize speech (WAV)
-  5. remote-save → save results + CSV to remote service (non-fatal)
+Executes the coffee pipeline in two phases:
+  1. **Sensor** (fixed first stage) — collect IMU data via mock/picoquake/serial
+  2. **Dynamic pipeline** — execute the configured service chain via
+     ``PipelineEngine``, which reads steps from the service registry.
 
-Each step passes its output to the next.  If a service is unavailable the
-pipeline stops at that step and reports what succeeded and what was skipped.
+Special modes handled before the dynamic pipeline:
+  - **Data collection** — if ``DATA_COLLECT_ENABLED``, save sensor data and skip
+    all downstream stages.
+
+Public functions ``run_pipeline()`` and ``run_pipeline_streaming()`` are
+backward-compatible wrappers used by ``main.py`` and the auto-trigger loop.
 """
 
 from __future__ import annotations
@@ -17,19 +19,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from config import config
+from pipeline_engine import PipelineEngine
+from registry import registry
 from sensor.mock import mock_sensor
 from sensor.reader import read_sensor, read_sensor_streaming
-from services.classifier_client import ClassifierClient
-from services.llm_client import LLMClient
-from services.ollama_client import OllamaClient
-from services.tts_client import TTSClient
-from services.remote_save_client import RemoteSaveClient
 from services.training_data import save_recording
 
 logger = logging.getLogger("rpicoffee.pipeline")
@@ -37,16 +35,10 @@ logger = logging.getLogger("rpicoffee.pipeline")
 AUDIO_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))) / "audio"
 
 
-def _cleanup_audio() -> None:
-    """Remove old WAV files from the audio directory."""
-    try:
-        for wav in AUDIO_DIR.glob("*.wav"):
-            try:
-                wav.unlink()
-            except OSError:
-                logger.warning("Could not delete %s", wav)
-    except OSError:
-        logger.warning("Could not list audio directory for cleanup")
+def _sse(event: str, data: Any) -> str:
+    """Format a Server-Sent Event message."""
+    payload = json.dumps(data) if not isinstance(data, str) else data
+    return f"event: {event}\ndata: {payload}\n\n"
 
 
 async def run_pipeline(
@@ -74,18 +66,6 @@ async def run_pipeline(
         audio_url       : str | None
         error           : str | None
     """
-    result: dict[str, Any] = {
-        "steps_completed": [],
-        "steps_skipped": [],
-        "sensor_samples": 0,
-        "sensor_data": None,
-        "label": None,
-        "confidence": None,
-        "text": None,
-        "audio_url": None,
-        "error": None,
-    }
-
     now = datetime.now().astimezone()
 
     # ── Step 0: Collect sensor data ──────────────────────────────
@@ -98,111 +78,33 @@ async def run_pipeline(
 
             sensor_data = await read_sensor(port=port)
 
-        result["sensor_samples"] = len(sensor_data)
-
         if not sensor_data:
-            result["error"] = "No sensor data collected"
-            return result
+            return _empty_result(error="No sensor data collected")
 
-        # Keep full raw data for remote save, downsample for the chart
         raw_sensor_data = sensor_data
-        step = max(1, len(sensor_data) // 300)
-        result["sensor_data"] = sensor_data[::step]
-
-        result["steps_completed"].append("sensor")
     except Exception as exc:
         logger.exception("Sensor read failed")
-        result["error"] = f"Sensor read failed: {exc}"
-        return result
+        return _empty_result(error=f"Sensor read failed: {exc}")
 
     # ── Data Collection Mode ──────────────────────────────────────
     if config.DATA_COLLECT_ENABLED and config.DATA_COLLECT_LABEL:
-        try:
-            filepath = save_recording(config.DATA_COLLECT_LABEL, raw_sensor_data)
-            result["label"] = config.DATA_COLLECT_LABEL
-            result["steps_completed"].append("data_collected")
-            result["data_collected"] = True
-            result["data_file"] = filepath
-            result["steps_skipped"].extend(["classifier", "llm", "tts", "remote-save"])
-            logger.info("Data collection: saved %d samples as '%s' → %s",
-                        len(raw_sensor_data), config.DATA_COLLECT_LABEL, filepath)
-            return result
-        except Exception as exc:
-            logger.exception("Data collection save failed")
-            result["error"] = f"Data collection save failed: {exc}"
-            return result
+        return await _data_collect(raw_sensor_data)
 
-    # ── Step 1: Classify via classifier ───────────────────────────
-    if on_progress:
-        on_progress("Classifying coffee type…")
-    classification = await ClassifierClient.classify(sensor_data)
+    # ── Dynamic pipeline stages ──────────────────────────────────
+    engine = PipelineEngine(registry)
+    ctx = await engine.execute(raw_sensor_data, now)
 
-    if classification is None:
-        result["steps_skipped"].append("classifier")
-        result["steps_skipped"].append("llm")
-        result["steps_skipped"].append("tts")
-        result["error"] = "Classification unavailable"
-    else:
-        result["label"] = classification["label"]
-        result["confidence"] = classification["confidence"]
-        result["steps_completed"].append("classifier")
+    # Build backward-compatible result dict
+    result = engine._build_summary(ctx)
+    result["sensor_samples"] = len(raw_sensor_data)
+    result["steps_completed"].insert(0, "sensor")
 
-    # ── Step 2: Generate text via llm ────────────────────────────
-    llm_text: str | None = None
-    if result["label"] is not None:
-        if on_progress:
-            on_progress(f"Generating text for {result['label']}…")
-        _llm = OllamaClient if config.LLM_BACKEND == "ollama" else LLMClient
-        llm_result = await _llm.generate(
-            coffee_label=result["label"],
-            timestamp=now,
-        )
-        if llm_result is None:
-            result["steps_skipped"].append("llm")
-            result["steps_skipped"].append("tts")
-            if not result["error"]:
-                result["error"] = "Text generation unavailable"
-        else:
-            llm_text = llm_result["response"]
-            result["text"] = llm_text
-            result["steps_completed"].append("llm")
-
-    # ── Step 3: Synthesize speech via tts ─────────────────────────
-    if llm_text is not None:
-        if on_progress:
-            on_progress("Synthesizing speech…")
-        audio_bytes = await TTSClient.synthesize(llm_text)
-        if audio_bytes is None:
-            result["steps_skipped"].append("tts")
-            if not result["error"]:
-                result["error"] = "Speech synthesis unavailable"
-        else:
-            _cleanup_audio()
-            audio_id = uuid.uuid4().hex[:12]
-            audio_path = AUDIO_DIR / f"{audio_id}.wav"
-            AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-            audio_path.write_bytes(audio_bytes)
-            result["audio_url"] = f"/audio/{audio_id}.wav"
-            result["steps_completed"].append("tts")
-
-    # ── Step 4: Save results via remote save (always attempted) ──
-    if on_progress:
-        on_progress("Saving results…")
-    save_ok = await RemoteSaveClient.save(result, raw_sensor_data)
-    if save_ok:
-        result["steps_completed"].append("remote-save")
-    else:
-        result["steps_skipped"].append("remote-save")
-        logger.warning("Remote save skipped or failed – brew result still returned")
+    # Downsample for chart
+    step = max(1, len(raw_sensor_data) // 300)
+    result["sensor_data"] = raw_sensor_data[::step]
 
     logger.info("Pipeline complete: %s → %s", result["label"], result["audio_url"])
     return result
-
-
-def _sse(event: str, data: Any) -> str:
-    """Format a Server-Sent Event message."""
-    payload = json.dumps(data) if not isinstance(data, str) else data
-    return f"event: {event}\ndata: {payload}\n\n"
 
 
 async def run_pipeline_streaming(
@@ -221,21 +123,18 @@ async def run_pipeline_streaming(
         When True, skip the remote-save step.
 
     Events emitted:
-        sensor   – batch of sensor data points (many times)
-        status   – { message: str } progress updates
-        result   – final pipeline result dict (once, at end)
+        sensor          – batch of sensor data points (many times)
+        status          – { message: str } progress updates
+        step_start      – { service: name }
+        step_complete   – { service: name, result: ... }
+        step_error      – { service: name, error: ... }
+        step_skip       – { service: name, reason: ... }
+        classify        – legacy: { label, confidence }
+        text            – legacy: { text }
+        audio           – legacy: { audio_url }
+        pipeline_complete – full result summary
+        result          – final pipeline result dict (once, at end)
     """
-    result: dict[str, Any] = {
-        "steps_completed": [],
-        "steps_skipped": [],
-        "sensor_samples": 0,
-        "label": None,
-        "confidence": None,
-        "text": None,
-        "audio_url": None,
-        "error": None,
-    }
-
     now = datetime.now().astimezone()
 
     # ── Step 0: Stream sensor data ───────────────────────────────
@@ -250,115 +149,84 @@ async def run_pipeline_streaming(
 
         async for batch in read_sensor_streaming(port=port):
             all_sensor_data.extend(batch)
-            # Downsample batch for chart if large
             step = max(1, len(batch) // 20)
             yield _sse("sensor", batch[::step])
 
-        result["sensor_samples"] = len(all_sensor_data)
-
         if not all_sensor_data:
-            result["error"] = "No sensor data collected"
-            yield _sse("result", result)
+            yield _sse("result", _empty_result(error="No sensor data collected"))
             return
 
-        result["steps_completed"].append("sensor")
     except Exception as exc:
         logger.exception("Sensor read failed")
-        result["error"] = f"Sensor read failed: {exc}"
-        yield _sse("result", result)
+        yield _sse("result", _empty_result(error=f"Sensor read failed: {exc}"))
         return
 
     # ── Data Collection Mode ──────────────────────────────────────
     if config.DATA_COLLECT_ENABLED and config.DATA_COLLECT_LABEL:
-        try:
-            filepath = save_recording(config.DATA_COLLECT_LABEL, all_sensor_data)
-            result["label"] = config.DATA_COLLECT_LABEL
-            result["steps_completed"].append("data_collected")
-            result["data_collected"] = True
-            result["data_file"] = filepath
-            result["steps_skipped"].extend(["classifier", "llm", "tts", "remote-save"])
-            logger.info("Data collection: saved %d samples as '%s' → %s",
-                        len(all_sensor_data), config.DATA_COLLECT_LABEL, filepath)
-            yield _sse("data_collected", {
-                "label": config.DATA_COLLECT_LABEL,
-                "samples": len(all_sensor_data),
-                "file": filepath,
-            })
-            yield _sse("result", result)
-            return
-        except Exception as exc:
-            logger.exception("Data collection save failed")
-            result["error"] = f"Data collection save failed: {exc}"
-            yield _sse("result", result)
-            return
+        result = await _data_collect(all_sensor_data)
+        yield _sse("data_collected", {
+            "label": config.DATA_COLLECT_LABEL,
+            "samples": len(all_sensor_data),
+            "file": result.get("data_file"),
+        })
+        yield _sse("result", result)
+        return
 
-    # ── Step 1: Classify via classifier ───────────────────────────
-    yield _sse("status", {"message": "Classifying coffee type…"})
+    # ── Dynamic pipeline stages ──────────────────────────────────
+    engine = PipelineEngine(registry)
 
-    classification = await ClassifierClient.classify(all_sensor_data)
-
-    if classification is None:
-        result["steps_skipped"].extend(["classifier", "llm", "tts"])
-        result["error"] = "Classification unavailable"
-    else:
-        result["label"] = classification["label"]
-        result["confidence"] = classification["confidence"]
-        result["steps_completed"].append("classifier")
-        yield _sse("classify", {"label": classification["label"], "confidence": classification["confidence"]})
-
-    # ── Step 2: Generate text via llm ────────────────────────────
-    llm_text: str | None = None
-    if result["label"] is not None:
-        yield _sse("status", {"message": f"Generating text for {result['label']}…"})
-
-        _llm = OllamaClient if config.LLM_BACKEND == "ollama" else LLMClient
-        llm_result = await _llm.generate(
-            coffee_label=result["label"],
-            timestamp=now,
-        )
-
-        if llm_result is None:
-            result["steps_skipped"].extend(["llm", "tts"])
-            if not result["error"]:
-                result["error"] = "Text generation unavailable"
-        else:
-            llm_text = llm_result["response"]
-            result["text"] = llm_text
-            result["steps_completed"].append("llm")
-            yield _sse("text", {"text": llm_text})
-
-    # ── Step 3: Synthesize speech via tts ─────────────────────────
-    if llm_text is not None:
-        yield _sse("status", {"message": "Synthesizing speech…"})
-
-        audio_bytes = await TTSClient.synthesize(llm_text)
-
-        if audio_bytes is None:
-            result["steps_skipped"].append("tts")
-            if not result["error"]:
-                result["error"] = "Speech synthesis unavailable"
-        else:
-            _cleanup_audio()
-            audio_id = uuid.uuid4().hex[:12]
-            audio_path = AUDIO_DIR / f"{audio_id}.wav"
-            AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-            audio_path.write_bytes(audio_bytes)
-            result["audio_url"] = f"/audio/{audio_id}.wav"
-            result["steps_completed"].append("tts")
-            yield _sse("audio", {"audio_url": result["audio_url"]})
-
-    # ── Step 4: Save results via remote save (unless skipped) ────
+    # If skip_save is requested, temporarily disable the remote-save step
     if skip_save:
-        result["steps_skipped"].append("remote-save")
-        logger.info("Remote save skipped (test mode)")
-    else:
-        yield _sse("status", {"message": "Saving results…"})
-        save_ok = await RemoteSaveClient.save(result, all_sensor_data)
-        if save_ok:
-            result["steps_completed"].append("remote-save")
-        else:
-            result["steps_skipped"].append("remote-save")
-            logger.warning("Remote save skipped or failed – brew result still returned")
+        registry.set_enabled("remote-save", False)
 
-    logger.info("Pipeline complete: %s → %s", result["label"], result["audio_url"])
-    yield _sse("result", result)
+    final_summary: dict[str, Any] | None = None
+    try:
+        async for event in engine.execute_streaming(all_sensor_data, now):
+            yield _sse(event["event"], event["data"])
+            if event["event"] == "pipeline_complete":
+                final_summary = event["data"]
+    finally:
+        if skip_save:
+            registry.set_enabled("remote-save", True)
+
+    # Emit legacy result event for full backward compatibility
+    if final_summary is not None:
+        final_summary["sensor_samples"] = len(all_sensor_data)
+        final_summary.setdefault("steps_completed", []).insert(0, "sensor")
+        yield _sse("result", final_summary)
+
+    logger.info("Pipeline streaming complete")
+
+
+def _empty_result(error: str | None = None) -> dict[str, Any]:
+    """Return an empty result dict with optional error."""
+    return {
+        "steps_completed": [],
+        "steps_skipped": [],
+        "sensor_samples": 0,
+        "sensor_data": None,
+        "label": None,
+        "confidence": None,
+        "text": None,
+        "audio_url": None,
+        "error": error,
+    }
+
+
+async def _data_collect(raw_sensor_data: list[dict[str, float]]) -> dict[str, Any]:
+    """Handle data collection mode: save sensor data and skip pipeline."""
+    result = _empty_result()
+    try:
+        filepath = save_recording(config.DATA_COLLECT_LABEL, raw_sensor_data)
+        result["label"] = config.DATA_COLLECT_LABEL
+        result["sensor_samples"] = len(raw_sensor_data)
+        result["steps_completed"] = ["sensor", "data_collected"]
+        result["data_collected"] = True
+        result["data_file"] = filepath
+        result["steps_skipped"] = ["classifier", "llm", "tts", "remote-save"]
+        logger.info("Data collection: saved %d samples as '%s' → %s",
+                    len(raw_sensor_data), config.DATA_COLLECT_LABEL, filepath)
+    except Exception as exc:
+        logger.exception("Data collection save failed")
+        result["error"] = f"Data collection save failed: {exc}"
+    return result
