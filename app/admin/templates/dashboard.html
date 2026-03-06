@@ -1515,7 +1515,19 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     <div id="pipeline-steps-wrap" style="margin-bottom:1rem;">
         <p style="font-size:0.85rem;color:var(--pico-muted-color);margin-bottom:0.5rem;">
             Pipeline execution order. Steps run sequentially after sensor data is collected.
+            <a href="/admin/pipeline" style="margin-left:0.5rem;">Open Pipeline Editor →</a>
         </p>
+
+        <!-- Read-only pipeline flow visualization -->
+        <div id="pipeline-flow" style="display:flex;align-items:center;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.75rem;padding:0.5rem;background:var(--pico-card-background-color);border:1px solid var(--pico-muted-border-color);border-radius:6px;overflow-x:auto;">
+            <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.3rem 0.6rem;border-radius:4px;border:1px solid #22c55e;font-size:0.8rem;font-weight:600;color:#22c55e;">
+                &#9655; Sensor
+            </span>
+            <span id="pipeline-flow-steps" style="display:contents;">
+                <!-- Populated by JS -->
+            </span>
+        </div>
+
         <table role="grid" id="pipeline-steps-table" style="font-size:0.9rem;">
             <thead>
                 <tr>
@@ -1568,6 +1580,21 @@ async function loadPipelineSteps() {
 
 function renderPipelineSteps(steps) {
     var tbody = document.getElementById('pipeline-steps-tbody');
+    var flowContainer = document.getElementById('pipeline-flow-steps');
+
+    // Flow visualization
+    var flowHtml = '';
+    steps.forEach(function(step) {
+        var color = step.enabled ? 'var(--pico-primary-background)' : 'var(--pico-muted-color)';
+        flowHtml += '<span style="color:var(--pico-muted-color);font-size:0.9rem;">→</span>'
+            + '<span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.3rem 0.6rem;border-radius:4px;'
+            + 'border:1px solid ' + color + ';font-size:0.8rem;font-weight:600;'
+            + (step.enabled ? '' : 'opacity:0.5;text-decoration:line-through;')
+            + '">' + escHtml(step.service) + '</span>';
+    });
+    if (flowContainer) flowContainer.innerHTML = flowHtml;
+
+    // Table
     if (!steps.length) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--pico-muted-color);">No pipeline steps configured.</td></tr>';
         return;
