@@ -130,3 +130,30 @@ class ClassifierClient:
         except Exception as exc:
             logger.error("Classifier get_labels failed: %s", exc)
             return []
+
+    @staticmethod
+    async def get_settings() -> list[dict[str, Any]] | None:
+        """Fetch settings metadata from the classifier service."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(f"{config.CLASSIFIER_ENDPOINT}/settings")
+                r.raise_for_status()
+                return r.json()
+        except Exception as exc:
+            logger.error("Classifier get_settings failed: %s", exc)
+            return None
+
+    @staticmethod
+    async def update_settings(settings: dict[str, Any]) -> dict[str, Any] | None:
+        """Update settings on the classifier service."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.patch(
+                    f"{config.CLASSIFIER_ENDPOINT}/settings",
+                    json={"settings": settings},
+                )
+                r.raise_for_status()
+                return r.json()
+        except Exception as exc:
+            logger.error("Classifier update_settings failed: %s", exc)
+            return None

@@ -14,6 +14,7 @@ services:
       - MODEL_DIR=/data/models
       - TRAINING_DIR=/data/training
       - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.6}
+      - SETTINGS_DIR=/data
     networks:
       - coffee-net
     restart: unless-stopped
@@ -28,9 +29,12 @@ services:
     container_name: rpicoffee-llm
     ports:
       - "${LLM_PORT:-8002}:${LLM_PORT:-8002}"
+    volumes:
+      - llm-data:/data
     environment:
       - OMP_NUM_THREADS=4
       - THREADS=4
+      - SETTINGS_DIR=/data
     cpus: 4
     mem_limit: 2g
     networks:
@@ -47,6 +51,10 @@ services:
     container_name: rpicoffee-tts
     ports:
       - "${TTS_PORT:-5050}:${TTS_PORT:-5050}"
+    volumes:
+      - tts-data:/data
+    environment:
+      - SETTINGS_DIR=/data
     networks:
       - coffee-net
     restart: unless-stopped
@@ -61,8 +69,12 @@ services:
     container_name: rpicoffee-remote-save
     ports:
       - "${REMOTE_SAVE_PORT:-7000}:${REMOTE_SAVE_PORT:-7000}"
+    volumes:
+      - remote-save-data:/data
     env_file:
       - ./services/remote-save/.env
+    environment:
+      - SETTINGS_DIR=/data
     networks:
       - coffee-net
     restart: unless-stopped
@@ -72,3 +84,8 @@ services:
 networks:
   coffee-net:
     driver: bridge
+
+volumes:
+  llm-data:
+  tts-data:
+  remote-save-data:

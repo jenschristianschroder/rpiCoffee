@@ -52,3 +52,30 @@ class TTSClient:
         except Exception as exc:
             logger.error("TTS synthesize failed: %s", exc)
             return None
+
+    @staticmethod
+    async def get_settings() -> list[dict[str, Any]] | None:
+        """Fetch settings metadata from the TTS service."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(f"{config.TTS_ENDPOINT}/settings")
+                r.raise_for_status()
+                return r.json()
+        except Exception as exc:
+            logger.error("TTS get_settings failed: %s", exc)
+            return None
+
+    @staticmethod
+    async def update_settings(settings: dict[str, Any]) -> dict[str, Any] | None:
+        """Update settings on the TTS service."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.patch(
+                    f"{config.TTS_ENDPOINT}/settings",
+                    json={"settings": settings},
+                )
+                r.raise_for_status()
+                return r.json()
+        except Exception as exc:
+            logger.error("TTS update_settings failed: %s", exc)
+            return None

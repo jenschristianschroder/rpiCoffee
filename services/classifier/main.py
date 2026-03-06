@@ -20,6 +20,7 @@ DELETE /training-data/{label}/{filename}  → delete a training file
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -40,10 +41,49 @@ app = FastAPI(title="rpicoffee-classifier", version="2.0.0")
 # Thread pool for background training
 _executor = ThreadPoolExecutor(max_workers=1)
 
+# ── Settings persistence ─────────────────────────────────────────
+SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
+
+_runtime: dict[str, Any] = {}
+
+_SETTINGS_REGISTRY: list[dict[str, str]] = [
+    {"key": "CONFIDENCE_THRESHOLD", "name": "Confidence Threshold", "description": "Minimum confidence score to accept a classification result", "type": "float"},
+    {"key": "MODEL_DIR", "name": "Model Directory", "description": "Path where trained model files are stored", "type": "str"},
+    {"key": "TRAINING_DIR", "name": "Training Directory", "description": "Path to the directory containing labelled training CSVs", "type": "str"},
+]
+
+
+def _load_settings() -> None:
+    _runtime["CONFIDENCE_THRESHOLD"] = float(os.environ.get("CONFIDENCE_THRESHOLD", "0.6"))
+    _runtime["MODEL_DIR"] = os.environ.get("MODEL_DIR", "/data/models")
+    _runtime["TRAINING_DIR"] = os.environ.get("TRAINING_DIR", "/data/training")
+
+    if SETTINGS_PATH.exists():
+        try:
+            persisted = json.loads(SETTINGS_PATH.read_text())
+            for entry in _SETTINGS_REGISTRY:
+                key = entry["key"]
+                if key in persisted:
+                    dtype = entry["type"]
+                    if dtype == "float":
+                        _runtime[key] = float(persisted[key])
+                    elif dtype == "int":
+                        _runtime[key] = int(persisted[key])
+                    else:
+                        _runtime[key] = str(persisted[key])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+
+def _save_settings() -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps(_runtime, indent=2))
+
 
 @app.on_event("startup")
 async def _ensure_dirs():
     """Create data directories if they don't exist (covers volume-mount edge cases)."""
+    _load_settings()
     TRAINING_DIR.mkdir(parents=True, exist_ok=True)
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -162,6 +202,39 @@ async def get_labels():
             if d.is_dir() and any(d.glob("*.csv")):
                 labels.append(d.name)
     return {"labels": labels}
+
+
+# ── Settings ─────────────────────────────────────────────────────
+
+class SettingsUpdate(BaseModel):
+    settings: dict[str, Any]
+
+
+@app.get("/settings")
+async def get_settings():
+    return [
+        {**entry, "value": _runtime.get(entry["key"])}
+        for entry in _SETTINGS_REGISTRY
+    ]
+
+
+@app.patch("/settings")
+async def update_settings(req: SettingsUpdate):
+    valid_keys = {e["key"] for e in _SETTINGS_REGISTRY}
+    updated = []
+    for key, value in req.settings.items():
+        if key not in valid_keys:
+            continue
+        dtype = next(e["type"] for e in _SETTINGS_REGISTRY if e["key"] == key)
+        if dtype == "int":
+            _runtime[key] = int(value)
+        elif dtype == "float":
+            _runtime[key] = float(value)
+        else:
+            _runtime[key] = str(value)
+        updated.append(key)
+    _save_settings()
+    return {"updated": updated}
 
 
 # ── Training data management ────────────────────────────────────

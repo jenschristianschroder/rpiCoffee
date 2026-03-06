@@ -1,2 +1,4 @@
 # Serving dependencies (for running on Pi outside Docker)
 llama-cpp-python==0.3.8
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1

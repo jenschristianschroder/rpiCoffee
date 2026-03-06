@@ -19,6 +19,7 @@ POST /save
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import os
 import tempfile
@@ -36,6 +37,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 DEFAULT_SCOPE_SUFFIX = "/.default"
+SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
 
 # ── Coffee type enum mapping (text → Dataverse option-set int) ──────────────
 COFFEE_TYPE_MAP: dict[str, int] = {
@@ -49,6 +51,41 @@ app = FastAPI(
     description="Pipeline stage that persists data to Microsoft Dataverse.",
     version="1.0.0",
 )
+
+# ── Settings persistence ────────────────────────────────────────────────────
+_runtime: dict[str, Any] = {}
+
+_SETTINGS_REGISTRY: list[dict[str, str]] = [
+    {"key": "DATAVERSE_ENV_URL", "name": "Dataverse Environment URL", "description": "Base URL of the Dataverse environment", "type": "str"},
+    {"key": "DATAVERSE_TABLE", "name": "Dataverse Table", "description": "Logical name of the Dataverse table to write records to", "type": "str"},
+    {"key": "DATAVERSE_COLUMN", "name": "Dataverse File Column", "description": "Logical name of the file column for CSV uploads", "type": "str"},
+]
+
+
+def _load_settings() -> None:
+    _runtime["DATAVERSE_ENV_URL"] = os.environ.get("DATAVERSE_ENV_URL", "")
+    _runtime["DATAVERSE_TABLE"] = os.environ.get("DATAVERSE_TABLE", "")
+    _runtime["DATAVERSE_COLUMN"] = os.environ.get("DATAVERSE_COLUMN", "")
+
+    if SETTINGS_PATH.exists():
+        try:
+            persisted = json.loads(SETTINGS_PATH.read_text())
+            for entry in _SETTINGS_REGISTRY:
+                key = entry["key"]
+                if key in persisted:
+                    _runtime[key] = str(persisted[key])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+
+def _save_settings() -> None:
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps(_runtime, indent=2))
+
+
+@app.on_event("startup")
+async def _startup():
+    _load_settings()
 
 
 # ── Configuration from environment ──────────────────────────────────────────
@@ -269,3 +306,30 @@ def save(req: SaveRequest) -> SaveResponse:
         record_id=record_id,
         message=f"Record created in {table} with id {record_id}",
     )
+
+
+# ── Settings ────────────────────────────────────────────────────────────────
+
+class SettingsUpdate(BaseModel):
+    settings: dict[str, Any]
+
+
+@app.get("/settings")
+def get_settings():
+    return [
+        {**entry, "value": _runtime.get(entry["key"])}
+        for entry in _SETTINGS_REGISTRY
+    ]
+
+
+@app.patch("/settings")
+def update_settings(req: SettingsUpdate):
+    valid_keys = {e["key"] for e in _SETTINGS_REGISTRY}
+    updated = []
+    for key, value in req.settings.items():
+        if key not in valid_keys:
+            continue
+        _runtime[key] = str(value)
+        updated.append(key)
+    _save_settings()
+    return {"updated": updated}

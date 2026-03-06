@@ -188,6 +188,62 @@ curl -X POST http://localhost:7000/save \
 | `500` | Missing environment variables |
 | `502` | Azure AD authentication or Dataverse API failure |
 
+### `GET /settings`
+
+Returns the current runtime settings for the remote-save service.
+
+#### Response
+
+```json
+{
+  "settings": [
+    {
+      "key": "DATAVERSE_ENV_URL",
+      "name": "Dataverse Environment URL",
+      "description": "https://<org>.crm.dynamics.com",
+      "type": "str",
+      "value": "https://org.crm.dynamics.com"
+    },
+    {
+      "key": "DATAVERSE_TABLE",
+      "name": "Dataverse Table",
+      "description": "Logical name of the target table",
+      "type": "str",
+      "value": "jenssch_mytable"
+    },
+    {
+      "key": "DATAVERSE_COLUMN",
+      "name": "Dataverse File Column",
+      "description": "Column for file uploads",
+      "type": "str",
+      "value": "jenssch_file"
+    }
+  ]
+}
+```
+
+### `PATCH /settings`
+
+Update one or more runtime settings. Only keys listed in the settings registry are accepted; unknown keys are silently ignored. Changes are persisted to `settings.json` inside the container's `/data` volume.
+
+#### Example Request
+
+```bash
+curl -X PATCH http://localhost:7000/settings \
+  -H "Content-Type: application/json" \
+  -d '{"DATAVERSE_TABLE": "jenssch_newtable"}'
+```
+
+#### Response
+
+```json
+{
+  "settings": [ ... ]
+}
+```
+
+> **Note:** Secrets such as `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and `AZURE_TENANT_ID` are intentionally excluded from the settings endpoint for security.
+
 ## Interactive API Docs
 
 When the service is running, auto-generated Swagger UI is available at:

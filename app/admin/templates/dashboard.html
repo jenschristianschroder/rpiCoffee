@@ -1513,6 +1513,132 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 })();
 </script>
 
+<!-- Service Settings (per-container, fetched dynamically) -->
+<div class="card" id="service-settings-card">
+    <h3>&#128736; Service Settings</h3>
+    <p style="font-size:0.85rem;color:var(--pico-muted-color);margin-bottom:1rem;">
+        Runtime configuration for each backend container. Changes are persisted inside the container volume.
+    </p>
+
+    {% for svc_name, svc_label in [("classifier", "Classifier"), ("llm", "LLM"), ("tts", "TTS"), ("remote-save", "Remote Save")] %}
+    <details class="svc-settings-panel" data-service="{{ svc_name }}" style="margin-bottom:1rem;">
+        <summary style="cursor:pointer;font-weight:600;">{{ svc_label }}</summary>
+        <div class="svc-settings-body" style="padding:0.75rem 0;">
+            <p style="color:var(--pico-muted-color);font-size:0.85rem;">Loading…</p>
+        </div>
+    </details>
+    {% endfor %}
+</div>
+
+<script>
+(function() {
+    // Fetch and render settings when a panel is opened
+    document.querySelectorAll('.svc-settings-panel').forEach(function(panel) {
+        var loaded = false;
+        panel.addEventListener('toggle', async function() {
+            if (!panel.open || loaded) return;
+            loaded = true;
+            var svc = panel.dataset.service;
+            var body = panel.querySelector('.svc-settings-body');
+            try {
+                var r = await fetch('/api/services/' + svc + '/settings');
+                var settings = await r.json();
+                if (settings.error) {
+                    body.innerHTML = '<p style="color:var(--pico-del-color);">' + settings.error + '</p>';
+                    loaded = false;
+                    return;
+                }
+                if (!Array.isArray(settings) || settings.length === 0) {
+                    body.innerHTML = '<p style="color:var(--pico-muted-color);">No configurable settings.</p>';
+                    return;
+                }
+                renderSettingsForm(body, svc, settings);
+            } catch (e) {
+                body.innerHTML = '<p style="color:var(--pico-del-color);">Service unreachable.</p>';
+                loaded = false;
+            }
+        });
+    });
+
+    function renderSettingsForm(container, svc, settings) {
+        var html = '<form class="svc-form" data-service="' + svc + '">';
+        settings.forEach(function(s) {
+            var inputHtml = '';
+            if (s.type === 'bool') {
+                var checked = (s.value === true || s.value === 'true') ? ' checked' : '';
+                inputHtml = '<label style="display:flex;align-items:center;gap:0.5rem;">'
+                    + s.name
+                    + '<input type="checkbox" role="switch" name="' + s.key + '"' + checked + '>'
+                    + '</label>';
+            } else if (s.type === 'float') {
+                inputHtml = '<label>' + s.name
+                    + '<input type="number" step="any" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
+                    + '</label>';
+            } else if (s.type === 'int') {
+                inputHtml = '<label>' + s.name
+                    + '<input type="number" step="1" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
+                    + '</label>';
+            } else {
+                inputHtml = '<label>' + s.name
+                    + '<input type="text" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
+                    + '</label>';
+            }
+            html += '<div style="margin-bottom:0.5rem;">'
+                + inputHtml
+                + '<small style="color:var(--pico-muted-color);">' + (s.description || '') + '</small>'
+                + '</div>';
+        });
+        html += '<div style="display:flex;gap:0.8rem;align-items:center;">'
+            + '<button type="submit" style="margin:0;">Save</button>'
+            + '<span class="svc-save-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>'
+            + '</div></form>';
+        container.innerHTML = html;
+
+        // Handle save
+        container.querySelector('form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            var form = e.target;
+            var statusEl = form.querySelector('.svc-save-status');
+            var payload = {};
+            settings.forEach(function(s) {
+                var input = form.querySelector('[name="' + s.key + '"]');
+                if (!input) return;
+                if (s.type === 'bool') {
+                    payload[s.key] = input.checked;
+                } else if (s.type === 'float') {
+                    payload[s.key] = parseFloat(input.value);
+                } else if (s.type === 'int') {
+                    payload[s.key] = parseInt(input.value, 10);
+                } else {
+                    payload[s.key] = input.value;
+                }
+            });
+            statusEl.textContent = 'Saving…';
+            statusEl.style.color = 'var(--pico-muted-color)';
+            try {
+                var r = await fetch('/api/services/' + svc + '/settings', {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({settings: payload})
+                });
+                var result = await r.json();
+                if (result.error) {
+                    statusEl.textContent = result.error;
+                    statusEl.style.color = 'var(--pico-del-color)';
+                } else {
+                    statusEl.textContent = 'Saved ✓';
+                    statusEl.style.color = 'var(--pico-ins-color)';
+                }
+            } catch (err) {
+                statusEl.textContent = 'Save failed';
+                statusEl.style.color = 'var(--pico-del-color)';
+            }
+            setTimeout(function() { statusEl.textContent = ''; }, 4000);
+        });
+    }
+})();
+</script>
+
 <!-- Change Password -->
 <div class="card" id="password-card">
     <h3>&#9919; Change Password</h3>

@@ -73,6 +73,27 @@ GET /docs
 
 Swagger UI for API exploration.
 
+### Settings
+
+```
+GET /settings
+```
+
+Returns configurable settings with current values.
+
+```
+PATCH /settings
+Content-Type: application/json
+```
+
+**Request body:**
+
+```json
+{ "settings": { "DEFAULT_SPEED": 1.2 } }
+```
+
+Settings are persisted to `/data/settings.json` inside the container volume.
+
 ## Configuration
 
 | Variable | Default | Description |
