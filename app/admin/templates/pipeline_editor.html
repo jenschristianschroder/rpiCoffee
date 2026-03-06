@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+{% block title %}Pipeline Editor – rpiCoffee{% endblock %}
+
+{% block nav %}
+<li><a href="/admin/">Dashboard</a></li>
+<li><a href="/admin/logout">Logout</a></li>
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.60/dist/drawflow.min.css">
+<script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.60/dist/drawflow.min.js"></script>
+<style>
+    .editor-wrap {
+        display: flex; gap: 1rem; height: calc(100vh - 200px); min-height: 400px;
+    }
+    .editor-sidebar {
+        width: 220px; flex-shrink: 0;
+        background: var(--pico-card-background-color);
+        border: 1px solid var(--pico-muted-border-color);
+        border-radius: 8px; padding: 0.75rem;
+        overflow-y: auto;
+    }
+    .editor-sidebar h4 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+    .sidebar-service {
+        padding: 0.5rem 0.6rem; margin-bottom: 0.4rem;
+        background: var(--pico-card-background-color);
+        border: 1px solid var(--pico-muted-border-color);
+        border-radius: 6px; cursor: grab; font-size: 0.85rem;
+        display: flex; align-items: center; gap: 0.4rem;
+    }
+    .sidebar-service:active { cursor: grabbing; }
+    .sidebar-service .svc-dot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        background: #9ca3af;
+    }
+    .sidebar-service .svc-dot.green { background: #22c55e; }
+    .sidebar-service .svc-dot.red { background: #ef4444; }
+
+    #drawflow {
+        flex: 1;
+        background: var(--pico-card-background-color);
+        border: 1px solid var(--pico-muted-border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    /* Drawflow overrides for dark/light theme */
+    .drawflow .drawflow-node {
+        background: var(--pico-card-background-color);
+        border: 2px solid var(--pico-muted-border-color);
+        border-radius: 8px;
+        min-width: 160px;
+        color: var(--pico-color);
+    }
+    .drawflow .drawflow-node.selected {
+        border-color: var(--pico-primary-background);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+    }
+    .drawflow .drawflow-node .drawflow_content_node {
+        padding: 0.5rem 0.75rem;
+    }
+    .drawflow .connection .main-path {
+        stroke: var(--pico-muted-border-color);
+        stroke-width: 2px;
+    }
+    .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+        background: var(--pico-primary-background);
+    }
+    .node-header {
+        font-weight: 700; font-size: 0.9rem; margin-bottom: 0.3rem;
+        display: flex; align-items: center; gap: 0.3rem;
+    }
+    .node-header .node-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #9ca3af; flex-shrink: 0;
+    }
+    .node-header .node-dot.green { background: #22c55e; }
+    .node-header .node-dot.red { background: #ef4444; }
+    .node-ports { font-size: 0.75rem; color: var(--pico-muted-color); }
+    .node-ports .port-in::before { content: '← '; }
+    .node-ports .port-out::before { content: '→ '; }
+    .node-failure {
+        font-size: 0.7rem; margin-top: 0.3rem;
+        color: var(--pico-muted-color);
+    }
+    .node-failure select {
+        font-size: 0.7rem; padding: 0.1rem 0.3rem;
+        border-radius: 4px; margin-left: 0.3rem;
+    }
+    .sensor-node {
+        border-color: #22c55e !important;
+        background: rgba(34, 197, 94, 0.05) !important;
+    }
+
+    .editor-toolbar {
+        display: flex; gap: 0.6rem; align-items: center;
+        margin-bottom: 0.75rem; flex-wrap: wrap;
+    }
+    .editor-toolbar button { padding: 0.3rem 0.8rem; font-size: 0.85rem; margin: 0; }
+    .editor-toolbar .status-msg { font-size: 0.85rem; color: var(--pico-muted-color); }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Pipeline Editor</h2>
+<p style="font-size:0.9rem;color:var(--pico-muted-color);margin-bottom:0.75rem;">
+    Drag services from the sidebar into the canvas. Connect outputs to inputs to wire the pipeline.
+    The sensor node is fixed and always runs first.
+</p>
+
+<div class="editor-toolbar">
+    <button onclick="savePipeline()" class="contrast">&#128190; Save Pipeline</button>
+    <button onclick="validatePipelineEditor()" class="secondary">&#10003; Validate</button>
+    <button onclick="resetPipeline()" class="outline secondary">&#8634; Reset to Default</button>
+    <button onclick="clearCanvas()">&#10005; Clear</button>
+    <span class="status-msg" id="editor-status"></span>
+</div>
+
+<div class="editor-wrap">
+    <div class="editor-sidebar">
+        <h4>Available Services</h4>
+        <div id="sidebar-services">
+            <small style="color:var(--pico-muted-color);">Loading…</small>
+        </div>
+    </div>
+    <div id="drawflow"></div>
+</div>
+
+<script>
+// ── Pipeline Editor ──────────────────────────────────────────
+const editorContainer = document.getElementById('drawflow');
+const editor = new Drawflow(editorContainer);
+editor.reroute = true;
+editor.start();
+
+// Zoom controls
+editor.zoom_max = 2;
+editor.zoom_min = 0.3;
+
+let _editorServices = [];
+let _editorHealth = {};
+let _editorNodeMap = {};  // nodeId → serviceName
+
+// ── Load services into sidebar ──────────────────────────────
+async function loadEditorServices() {
+    try {
+        const [svcRes, healthRes] = await Promise.all([
+            fetch('/api/registry/services'),
+            fetch('/api/registry/health')
+        ]);
+        _editorServices = await svcRes.json();
+        _editorHealth = await healthRes.json();
+    } catch (e) {
+        console.error('Failed to load services', e);
+        return;
+    }
+
+    const container = document.getElementById('sidebar-services');
+    let html = '';
+    _editorServices.forEach(function(svc) {
+        const health = _editorHealth[svc.name];
+        const dotClass = health && !health.error && health.status !== 'unreachable' ? 'green' : 'red';
+        html += '<div class="sidebar-service" draggable="true" data-service="' + escAttr(svc.name) + '">'
+            + '<span class="svc-dot ' + dotClass + '"></span>'
+            + '<span>' + escHtml(svc.name) + '</span>'
+            + '</div>';
+    });
+    container.innerHTML = html || '<small style="color:var(--pico-muted-color);">No services registered.</small>';
+
+    // Make sidebar items draggable
+    container.querySelectorAll('.sidebar-service').forEach(function(el) {
+        el.addEventListener('dragstart', function(e) {
+            e.dataTransfer.setData('service', el.dataset.service);
+        });
+    });
+}
+
+// ── Drop handler ────────────────────────────────────────────
+editorContainer.addEventListener('drop', function(e) {
+    e.preventDefault();
+    const serviceName = e.dataTransfer.getData('service');
+    if (!serviceName) return;
+
+    const svc = _editorServices.find(function(s) { return s.name === serviceName; });
+    if (!svc) return;
+
+    // Calculate position relative to editor
+    const rect = editorContainer.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / editor.zoom - editor.precanvas.getBoundingClientRect().left / editor.zoom + editor.precanvas.scrollLeft / editor.zoom;
+    const y = (e.clientY - rect.top) / editor.zoom - editor.precanvas.getBoundingClientRect().top / editor.zoom + editor.precanvas.scrollTop / editor.zoom;
+
+    addServiceNode(svc, x, y);
+});
+
+editorContainer.addEventListener('dragover', function(e) { e.preventDefault(); });
+
+// ── Node creation ───────────────────────────────────────────
+function addSensorNode() {
+    const html = '<div class="node-header"><span class="node-dot green"></span>Sensor</div>'
+        + '<div class="node-ports">'
+        + '<div class="port-out">data (array)</div>'
+        + '<div class="port-out">timestamp (string)</div>'
+        + '</div>';
+    const nodeId = editor.addNode('sensor', 0, 2, 50, 100, 'sensor-node', {}, html);
+    _editorNodeMap[nodeId] = '$sensor';
+    return nodeId;
+}
+
+function addServiceNode(svc, posX, posY) {
+    const m = svc.manifest;
+    const numInputs = m ? m.inputs.length : 1;
+    const numOutputs = m ? m.outputs.length : 1;
+
+    const health = _editorHealth[svc.name];
+    const dotClass = health && !health.error && health.status !== 'unreachable' ? 'green' : 'red';
+
+    let portsHtml = '';
+    if (m) {
+        if (m.inputs.length) {
+            m.inputs.forEach(function(inp) {
+                portsHtml += '<div class="port-in">' + escHtml(inp.name) + ' (' + escHtml(inp.type) + ')</div>';
+            });
+        }
+        if (m.outputs.length) {
+            m.outputs.forEach(function(out) {
+                portsHtml += '<div class="port-out">' + escHtml(out.name) + ' (' + escHtml(out.type) + ')</div>';
+            });
+        }
+    }
+
+    const html = '<div class="node-header"><span class="node-dot ' + dotClass + '"></span>' + escHtml(svc.name) + '</div>'
+        + '<div class="node-ports">' + portsHtml + '</div>'
+        + '<div class="node-failure">on fail: <select data-svc="' + escAttr(svc.name) + '" onchange="updateNodeFailure(this)">'
+        + '<option value="skip">skip</option>'
+        + '<option value="halt">halt</option>'
+        + '<option value="retry">retry</option>'
+        + '</select></div>';
+
+    const nodeId = editor.addNode(svc.name, numInputs, numOutputs, posX || 300, posY || 150, '', { service: svc.name, on_failure: 'skip' }, html);
+    _editorNodeMap[nodeId] = svc.name;
+    return nodeId;
+}
+
+function updateNodeFailure(selectEl) {
+    const svcName = selectEl.dataset.svc;
+    const value = selectEl.value;
+    // Update node data
+    for (const [nodeId, name] of Object.entries(_editorNodeMap)) {
+        if (name === svcName) {
+            const nodeData = editor.getNodeFromId(nodeId);
+            if (nodeData) nodeData.data.on_failure = value;
+        }
+    }
+}
+
+// ── Serialize to pipeline config ────────────────────────────
+function serializePipeline() {
+    const data = editor.export();
+    const module = data.drawflow.Home.data;
+    const nodes = [];
+
+    // Collect all non-sensor nodes in order of x-position (left-to-right = execution order)
+    for (const [nodeId, node] of Object.entries(module)) {
+        if (node.name === 'sensor') continue;
+        nodes.push({
+            nodeId: parseInt(nodeId),
+            name: node.name,
+            x: node.pos_x,
+            on_failure: (node.data && node.data.on_failure) || 'skip',
+            inputs: node.inputs,
+            outputs: node.outputs,
+        });
+    }
+
+    // Sort by x position (left to right = execution order)
+    nodes.sort(function(a, b) { return a.x - b.x; });
+
+    // Build pipeline steps with input_map from connections
+    const steps = nodes.map(function(node) {
+        const inputMap = {};
+        const svc = _editorServices.find(function(s) { return s.name === node.name; });
+        const manifest = svc ? svc.manifest : null;
+
+        // For each input connection, determine the source
+        if (node.inputs) {
+            let inputIdx = 0;
+            for (const [inputKey, inputInfo] of Object.entries(node.inputs)) {
+                const connections = inputInfo.connections;
+                if (connections.length > 0) {
+                    const conn = connections[0];  // Take first connection
+                    const sourceNodeId = conn.node;
+                    const sourceOutputKey = conn.output;
+                    const sourceName = _editorNodeMap[sourceNodeId];
+
+                    // Determine input name from manifest
+                    const inputName = manifest && manifest.inputs[inputIdx] ? manifest.inputs[inputIdx].name : 'input_' + inputIdx;
+
+                    // Determine output name from source manifest
+                    const sourceOutputIdx = parseInt(sourceOutputKey.replace('output_', '')) - 1;
+                    let outputName = 'output_' + sourceOutputIdx;
+                    if (sourceName === '$sensor') {
+                        outputName = sourceOutputIdx === 0 ? 'data' : 'timestamp';
+                    } else {
+                        const sourceSvc = _editorServices.find(function(s) { return s.name === sourceName; });
+                        if (sourceSvc && sourceSvc.manifest && sourceSvc.manifest.outputs[sourceOutputIdx]) {
+                            outputName = sourceSvc.manifest.outputs[sourceOutputIdx].name;
+                        }
+                    }
+
+                    inputMap[inputName] = '$' + sourceName.replace(/^\$/, '') + '.' + outputName;
+                }
+                inputIdx++;
+            }
+        }
+
+        return {
+            service: node.name,
+            input_map: inputMap,
+            on_failure: node.on_failure,
+            enabled: true,
+        };
+    });
+
+    return steps;
+}
+
+// ── Load existing pipeline into editor ──────────────────────
+async function loadPipelineIntoEditor() {
+    try {
+        const r = await fetch('/api/registry/pipeline');
+        const data = await r.json();
+        const pipeline = data.pipeline || [];
+
+        editor.clear();
+        _editorNodeMap = {};
+
+        // Add sensor node
+        addSensorNode();
+
+        // Add service nodes with positions
+        let xPos = 300;
+        const nodeIds = {};
+
+        pipeline.forEach(function(step) {
+            const svc = _editorServices.find(function(s) { return s.name === step.service; });
+            if (!svc) return;
+
+            const nodeId = addServiceNode(svc, xPos, 100);
+            nodeIds[step.service] = nodeId;
+
+            // Set failure mode
+            const nodeEl = editorContainer.querySelector('#node-' + nodeId + ' .node-failure select');
+            if (nodeEl) nodeEl.value = step.on_failure || 'skip';
+
+            const nodeData = editor.getNodeFromId(nodeId);
+            if (nodeData) nodeData.data.on_failure = step.on_failure || 'skip';
+
+            xPos += 250;
+        });
+
+        // Create connections based on input_map
+        pipeline.forEach(function(step) {
+            const targetNodeId = nodeIds[step.service];
+            if (!targetNodeId) return;
+
+            const svc = _editorServices.find(function(s) { return s.name === step.service; });
+            const manifest = svc ? svc.manifest : null;
+
+            let inputIdx = 0;
+            if (manifest && manifest.inputs) {
+                manifest.inputs.forEach(function(inp) {
+                    const ref = step.input_map[inp.name];
+                    if (!ref) { inputIdx++; return; }
+
+                    const parts = ref.replace(/^\$/, '').split('.');
+                    const srcService = parts[0];
+                    const srcKey = parts[1];
+
+                    let srcNodeId = null;
+                    let srcOutputIdx = 0;
+
+                    if (srcService === 'sensor') {
+                        // Find sensor node
+                        for (const [nid, name] of Object.entries(_editorNodeMap)) {
+                            if (name === '$sensor') { srcNodeId = parseInt(nid); break; }
+                        }
+                        srcOutputIdx = srcKey === 'data' ? 0 : 1;
+                    } else {
+                        srcNodeId = nodeIds[srcService];
+                        if (srcNodeId) {
+                            const srcSvc = _editorServices.find(function(s) { return s.name === srcService; });
+                            if (srcSvc && srcSvc.manifest) {
+                                srcSvc.manifest.outputs.forEach(function(out, idx) {
+                                    if (out.name === srcKey) srcOutputIdx = idx;
+                                });
+                            }
+                        }
+                    }
+
+                    if (srcNodeId !== null) {
+                        try {
+                            editor.addConnection(srcNodeId, targetNodeId, 'output_' + (srcOutputIdx + 1), 'input_' + (inputIdx + 1));
+                        } catch (e) {
+                            console.warn('Could not connect', srcService + '.' + srcKey, '→', step.service + '.' + inp.name, e);
+                        }
+                    }
+                    inputIdx++;
+                });
+            }
+        });
+
+    } catch (e) {
+        console.error('Failed to load pipeline', e);
+    }
+}
+
+// ── Actions ─────────────────────────────────────────────────
+async function savePipeline() {
+    const statusEl = document.getElementById('editor-status');
+    statusEl.textContent = 'Saving…';
+    statusEl.style.color = 'var(--pico-muted-color)';
+
+    const steps = serializePipeline();
+
+    try {
+        const r = await fetch('/api/registry/pipeline', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pipeline: steps })
+        });
+        if (!r.ok) {
+            const err = await r.json();
+            throw new Error(err.detail || 'HTTP ' + r.status);
+        }
+        statusEl.textContent = '✓ Pipeline saved';
+        statusEl.style.color = 'var(--pico-ins-color)';
+    } catch (e) {
+        statusEl.textContent = '✗ ' + e.message;
+        statusEl.style.color = 'var(--pico-del-color)';
+    }
+    setTimeout(function() { statusEl.textContent = ''; }, 5000);
+}
+
+async function validatePipelineEditor() {
+    const statusEl = document.getElementById('editor-status');
+    statusEl.textContent = 'Validating…';
+    statusEl.style.color = 'var(--pico-muted-color)';
+
+    try {
+        const r = await fetch('/api/registry/pipeline/validate', { method: 'POST' });
+        const data = await r.json();
+        if (data.valid) {
+            statusEl.textContent = '✓ Pipeline is valid';
+            statusEl.style.color = 'var(--pico-ins-color)';
+        } else {
+            statusEl.innerHTML = '✗ ' + data.issues.map(escHtml).join(' | ');
+            statusEl.style.color = 'var(--pico-del-color)';
+        }
+    } catch (e) {
+        statusEl.textContent = '✗ Validation failed';
+        statusEl.style.color = 'var(--pico-del-color)';
+    }
+}
+
+async function resetPipeline() {
+    if (!confirm('Reset pipeline to defaults? This will overwrite the current configuration.')) return;
+    const statusEl = document.getElementById('editor-status');
+    statusEl.textContent = 'Resetting…';
+
+    // Load the default pipeline from the stored defaults
+    try {
+        // Reload from disk (which re-reads pipeline.json defaults)
+        location.reload();
+    } catch (e) {
+        statusEl.textContent = '✗ Reset failed';
+        statusEl.style.color = 'var(--pico-del-color)';
+    }
+}
+
+function clearCanvas() {
+    if (!confirm('Clear all nodes from the canvas?')) return;
+    editor.clear();
+    _editorNodeMap = {};
+    addSensorNode();
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
+
+// ── Init ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadEditorServices();
+    await loadPipelineIntoEditor();
+});
+</script>
+{% endblock %}

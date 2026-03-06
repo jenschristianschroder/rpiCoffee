@@ -120,6 +120,19 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
     })
 
 
+# ── Pipeline Editor ──────────────────────────────────────────────
+
+@router.get("/pipeline", response_class=HTMLResponse)
+async def pipeline_editor(request: Request, session: str | None = Cookie(default=None)):
+    if not _verify_session_fresh(session):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    return templates.TemplateResponse("pipeline_editor.html", {
+        "request": request,
+        "config": config.to_dict(),
+    })
+
+
 # Keys whose change requires a sensor restart
 _SENSOR_KEYS = {"SENSOR_MODE", "SENSOR_DEVICE_ID", "SENSOR_SAMPLE_RATE_HZ",
                 "SENSOR_DURATION_S", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S",
