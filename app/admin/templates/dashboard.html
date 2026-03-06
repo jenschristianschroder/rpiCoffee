@@ -780,9 +780,32 @@ function removeLabel(label) {
         <h4 style="margin-bottom:0.3rem;">Sample Files <small style="color:var(--pico-muted-color);">(/data/*.csv.sample)</small></h4>
         <div id="sample-files-list"></div>
 
+        <!-- Upload Sample File -->
+        <details style="margin-top:0.5rem;margin-bottom:0.5rem;">
+            <summary style="font-size:0.85rem;cursor:pointer;">&#8593; Upload Sample File (.csv.sample)</summary>
+            <div style="margin-top:0.4rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <label for="upload-sample-file" style="margin:0;font-size:0.85rem;">
+                    <input type="file" id="upload-sample-file" accept=".csv.sample" style="font-size:0.85rem;">
+                </label>
+                <button onclick="uploadSampleFile()" style="font-size:0.85rem;padding:0.3rem 0.8rem;">Upload</button>
+            </div>
+        </details>
+
         <!-- Collected Training Data -->
         <h4 style="margin-top:1rem;margin-bottom:0.3rem;">Collected Training Data <small style="color:var(--pico-muted-color);">(/data/training/)</small></h4>
         <div id="training-files-list"></div>
+
+        <!-- Upload Training File -->
+        <details style="margin-top:0.5rem;margin-bottom:0.5rem;">
+            <summary style="font-size:0.85rem;cursor:pointer;">&#8593; Upload Training File (.csv)</summary>
+            <div style="margin-top:0.4rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                <input type="text" id="upload-training-label" placeholder="Label (e.g. espresso)" style="font-size:0.85rem;padding:0.25rem 0.5rem;width:12rem;margin:0;">
+                <label for="upload-training-file" style="margin:0;font-size:0.85rem;">
+                    <input type="file" id="upload-training-file" accept=".csv" style="font-size:0.85rem;">
+                </label>
+                <button onclick="uploadTrainingFile()" style="font-size:0.85rem;padding:0.3rem 0.8rem;">Upload</button>
+            </div>
+        </details>
 
         <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
             <button onclick="refreshTrainingData()" style="font-size:0.85rem;padding:0.3rem 0.8rem;">&#8635; Refresh</button>
@@ -813,7 +836,10 @@ async function refreshTrainingData() {
             samples.forEach(function(f) {
                 var sizeKb = (f.size_bytes / 1024).toFixed(1);
                 sHtml += '<tr><td>' + f.filename + '</td><td><mark>' + f.label + '</mark></td><td>' + sizeKb + ' KB</td>';
-                sHtml += '<td><button onclick="deleteSampleFile(\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">\u2717</button></td></tr>';
+                sHtml += '<td style="white-space:nowrap;">';
+                sHtml += '<a href="/api/data-files/' + encodeURIComponent(f.filename) + '/download" download="' + f.filename + '" role="button" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-right:0.2rem;" title="Download">\u2193</a>';
+                sHtml += '<button onclick="deleteSampleFile(\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);" title="Delete">\u2717</button>';
+                sHtml += '</td></tr>';
             });
             sHtml += '</tbody></table>';
         }
@@ -831,8 +857,9 @@ async function refreshTrainingData() {
                     var sizeKb = (f.size_bytes / 1024).toFixed(1);
                     tHtml += '<tr><td><mark>' + label + '</mark></td><td>' + f.filename + '</td><td>' + sizeKb + ' KB</td>';
                     tHtml += '<td style="white-space:nowrap;">';
+                    tHtml += '<a href="/api/training-data/' + encodeURIComponent(label) + '/' + encodeURIComponent(f.filename) + '/download" download="' + f.filename + '" role="button" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-right:0.2rem;" title="Download">\u2193</a>';
                     tHtml += '<button onclick="promoteTraining(\'' + label + '\',\'' + f.filename + '\')" title="Promote to sample" style="font-size:0.75rem;padding:0.15rem 0.4rem;margin-right:0.2rem;">\u25B2</button>';
-                    tHtml += '<button onclick="deleteTrainingFile(\'' + label + '\',\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);">\u2717</button>';
+                    tHtml += '<button onclick="deleteTrainingFile(\'' + label + '\',\'' + f.filename + '\')" style="font-size:0.75rem;padding:0.15rem 0.4rem;background:var(--pico-del-color);" title="Delete">\u2717</button>';
                     tHtml += '</td></tr>';
                 });
             });
@@ -882,6 +909,34 @@ async function promoteTraining(label, filename) {
     var data = await res.json();
     if (data.error) { alert('Error: ' + data.error); return; }
     alert('Promoted to sample: ' + data.filename);
+    refreshTrainingData();
+}
+
+async function uploadTrainingFile() {
+    var label = document.getElementById('upload-training-label').value.trim();
+    var fileInput = document.getElementById('upload-training-file');
+    if (!label) { alert('Please enter a label for the training file.'); return; }
+    if (!fileInput.files.length) { alert('Please choose a .csv file to upload.'); return; }
+    var formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    var res = await fetch('/api/training-data/' + encodeURIComponent(label) + '/upload', { method: 'POST', body: formData });
+    var data = await res.json();
+    if (data.error) { alert('Upload failed: ' + data.error); return; }
+    alert('Uploaded training file: ' + data.filename + ' (label: ' + data.label + ')');
+    fileInput.value = '';
+    refreshTrainingData();
+}
+
+async function uploadSampleFile() {
+    var fileInput = document.getElementById('upload-sample-file');
+    if (!fileInput.files.length) { alert('Please choose a .csv.sample file to upload.'); return; }
+    var formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    var res = await fetch('/api/data-files/upload', { method: 'POST', body: formData });
+    var data = await res.json();
+    if (data.error) { alert('Upload failed: ' + data.error); return; }
+    alert('Uploaded sample file: ' + data.filename);
+    fileInput.value = '';
     refreshTrainingData();
 }
 

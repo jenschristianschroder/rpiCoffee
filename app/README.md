@@ -56,6 +56,8 @@ The main app is the central coordinator. It:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/training-data` | List all training CSV files grouped by label |
+| `GET` | `/api/training-data/{label}/{filename}/download` | Download a specific training CSV file |
+| `POST` | `/api/training-data/{label}/upload` | Upload a training CSV file for the given label (multipart `file`) |
 | `DELETE` | `/api/training-data/{label}/{filename}` | Delete a specific training file |
 | `DELETE` | `/api/training-data/{label}` | Delete all training data for a label |
 | `DELETE` | `/api/training-data` | Delete all training data |
@@ -65,6 +67,8 @@ The main app is the central coordinator. It:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/data-files` | List sample CSV files in `/data/` |
+| `GET` | `/api/data-files/{filename}/download` | Download a specific sample CSV file |
+| `POST` | `/api/data-files/upload` | Upload a sample `.csv.sample` file (multipart `file`) |
 | `DELETE` | `/api/data-files/{filename}` | Delete a sample CSV file |
 | `POST` | `/api/data-files/promote` | Promote a training CSV to a sample file (body: `{"label": "...", "filename": "..."}`) |
 
