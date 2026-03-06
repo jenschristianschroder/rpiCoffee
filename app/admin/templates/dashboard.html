@@ -455,7 +455,7 @@ async function saveSensorConfig(e) {
     const body = {};
     fd.forEach((v, k) => { body[k] = v; });
     // Ensure unchecked checkboxes are sent as false
-    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED', 'SENSOR_NEUTRALIZE_GRAVITY'].forEach(function(k) {
+    ['SENSOR_ACC_ENABLED', 'SENSOR_GYRO_ENABLED', 'SENSOR_NEUTRALIZE_GRAVITY', 'SENSOR_AUTO_TRIGGER'].forEach(function(k) {
         var el = document.getElementById(k);
         body[k] = el && el.checked ? 'true' : 'false';
     });
@@ -1131,10 +1131,27 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     <h3>&#9889; Sensor Configuration</h3>
     <form id="sensor-config-form" onsubmit="saveSensorConfig(event)">
         <div class="grid">
-            <label for="SENSOR_DEVICE_ID">Device ID
-                <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}" placeholder="e.g. cf79">
+            <label for="SENSOR_MODE">Mode
+                <select id="SENSOR_MODE" name="SENSOR_MODE">
+                    <option value="mock" {% if config['SENSOR_MODE'] == 'mock' %}selected{% endif %}>Mock (CSV replay)</option>
+                    <option value="picoquake" {% if config['SENSOR_MODE'] == 'picoquake' %}selected{% endif %}>PicoQuake (USB sensor)</option>
+                    <option value="serial" {% if config['SENSOR_MODE'] == 'serial' %}selected{% endif %}>Serial (raw CSV)</option>
+                </select>
+                {% if descriptions.get('SENSOR_MODE') %}<small>{{ descriptions['SENSOR_MODE'] }}</small>{% endif %}
+            </label>
+            <label for="SENSOR_DEVICE_ID">Sensor ID
+                <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}"
+                       placeholder="e.g. cf79"
+                       {% if config['SENSOR_MODE'] != 'picoquake' %}disabled{% endif %}>
                 {% if descriptions.get('SENSOR_DEVICE_ID') %}<small>{{ descriptions['SENSOR_DEVICE_ID'] }}</small>{% endif %}
             </label>
+            <label for="SENSOR_SERIAL_PORT">Serial Port
+                <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}"
+                       {% if config['SENSOR_MODE'] != 'serial' %}disabled{% endif %}>
+                {% if descriptions.get('SENSOR_SERIAL_PORT') %}<small>{{ descriptions['SENSOR_SERIAL_PORT'] }}</small>{% endif %}
+            </label>
+        </div>
+        <div class="grid">
             <label for="SENSOR_SAMPLE_RATE_HZ">Sample Rate (Hz)
                 <input type="number" id="SENSOR_SAMPLE_RATE_HZ" name="SENSOR_SAMPLE_RATE_HZ" value="{{ config['SENSOR_SAMPLE_RATE_HZ'] }}">
                 {% if descriptions.get('SENSOR_SAMPLE_RATE_HZ') %}<small>{{ descriptions['SENSOR_SAMPLE_RATE_HZ'] }}</small>{% endif %}
@@ -1142,6 +1159,10 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
             <label for="SENSOR_DURATION_S">Duration (s)
                 <input type="number" id="SENSOR_DURATION_S" name="SENSOR_DURATION_S" value="{{ config['SENSOR_DURATION_S'] }}" min="1">
                 {% if descriptions.get('SENSOR_DURATION_S') %}<small>{{ descriptions['SENSOR_DURATION_S'] }}</small>{% endif %}
+            </label>
+            <label for="SENSOR_CHART_WINDOW_S">Chart Window (s)
+                <input type="number" id="SENSOR_CHART_WINDOW_S" name="SENSOR_CHART_WINDOW_S" value="{{ config['SENSOR_CHART_WINDOW_S'] }}" min="5" max="120" step="5">
+                {% if descriptions.get('SENSOR_CHART_WINDOW_S') %}<small>{{ descriptions['SENSOR_CHART_WINDOW_S'] }}</small>{% endif %}
             </label>
         </div>
         <div class="grid">
@@ -1160,10 +1181,14 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 </select>
                 {% if descriptions.get('SENSOR_TRIGGER_COMBINE_MODE') %}<small>{{ descriptions['SENSOR_TRIGGER_COMBINE_MODE'] }}</small>{% endif %}
             </label>
-            <label for="SENSOR_CHART_WINDOW_S">Chart Window (s)
-                <input type="number" id="SENSOR_CHART_WINDOW_S" name="SENSOR_CHART_WINDOW_S" value="{{ config['SENSOR_CHART_WINDOW_S'] }}" min="5" max="120" step="5">
-                {% if descriptions.get('SENSOR_CHART_WINDOW_S') %}<small>{{ descriptions['SENSOR_CHART_WINDOW_S'] }}</small>{% endif %}
+            <div>
+            <label style="display:flex;align-items:center;gap:0.5rem;">
+                Auto-Trigger
+                <input type="checkbox" id="SENSOR_AUTO_TRIGGER" name="SENSOR_AUTO_TRIGGER" role="switch"
+                       {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
             </label>
+            {% if descriptions.get('SENSOR_AUTO_TRIGGER') %}<small style="color:var(--pico-muted-color);">{{ descriptions['SENSOR_AUTO_TRIGGER'] }}</small>{% endif %}
+            </div>
         </div>
         <div class="grid" id="accel-threshold-row"{% if config['SENSOR_TRIGGER_SOURCES'] == 'gyro' %} style="display:none"{% endif %}>
             <label for="SENSOR_VIBRATION_THRESHOLD">Accel Threshold (g)
@@ -1356,41 +1381,6 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
         </fieldset>
 
         <fieldset>
-            <legend><strong>Sensor</strong></legend>
-            <div class="grid">
-                <label for="SENSOR_MODE">Mode
-                    <select id="SENSOR_MODE" name="SENSOR_MODE">
-                        <option value="mock" {% if config['SENSOR_MODE'] == 'mock' %}selected{% endif %}>Mock (CSV replay)</option>
-                        <option value="picoquake" {% if config['SENSOR_MODE'] == 'picoquake' %}selected{% endif %}>PicoQuake (USB sensor)</option>
-                        <option value="serial" {% if config['SENSOR_MODE'] == 'serial' %}selected{% endif %}>Serial (raw CSV)</option>
-                    </select>
-                    {% if descriptions.get('SENSOR_MODE') %}<small>{{ descriptions['SENSOR_MODE'] }}</small>{% endif %}
-                </label>
-                <label for="SENSOR_DEVICE_ID">Sensor ID
-                    <input type="text" id="SENSOR_DEVICE_ID" name="SENSOR_DEVICE_ID" value="{{ config['SENSOR_DEVICE_ID'] }}"
-                           placeholder="e.g. cf79"
-                           {% if config['SENSOR_MODE'] != 'picoquake' %}disabled{% endif %}>
-                    {% if descriptions.get('SENSOR_DEVICE_ID') %}<small>{{ descriptions['SENSOR_DEVICE_ID'] }}</small>{% endif %}
-                </label>
-                <label for="SENSOR_SERIAL_PORT">Serial Port
-                    <input type="text" id="SENSOR_SERIAL_PORT" name="SENSOR_SERIAL_PORT" value="{{ config['SENSOR_SERIAL_PORT'] }}"
-                           {% if config['SENSOR_MODE'] != 'serial' %}disabled{% endif %}>
-                    {% if descriptions.get('SENSOR_SERIAL_PORT') %}<small>{{ descriptions['SENSOR_SERIAL_PORT'] }}</small>{% endif %}
-                </label>
-            </div>
-            <div class="grid">
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    Auto-Trigger
-                    <input type="checkbox" name="SENSOR_AUTO_TRIGGER" role="switch"
-                           {% if config['SENSOR_AUTO_TRIGGER'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('SENSOR_AUTO_TRIGGER') %}<small style="color:var(--pico-muted-color);">{{ descriptions['SENSOR_AUTO_TRIGGER'] }}</small>{% endif %}
-                </div>
-            </div>
-        </fieldset>
-
-        <fieldset>
             <legend><strong>App</strong> – Interface Options</legend>
             <div class="grid">
                 <div>
@@ -1428,23 +1418,6 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
     }
     backendSel.addEventListener('change', toggleBackendFields);
     toggleBackendFields();
-})();
-
-// Toggle trigger source fields visibility
-(function() {
-    var srcSel = document.getElementById('SENSOR_TRIGGER_SOURCES');
-    var combineLabel = document.getElementById('combine-mode-label');
-    var accelRow = document.getElementById('accel-threshold-row');
-    var gyroRow = document.getElementById('gyro-threshold-row');
-
-    function toggleTriggerFields() {
-        var src = srcSel.value;
-        combineLabel.style.display = (src === 'both') ? '' : 'none';
-        accelRow.style.display = (src === 'gyro') ? 'none' : '';
-        gyroRow.style.display = (src === 'accel') ? 'none' : '';
-    }
-    srcSel.addEventListener('change', toggleTriggerFields);
-    // Initial state already set via Jinja template attributes
 })();
 
 // Toggle trigger source fields visibility
