@@ -164,6 +164,9 @@ Settings changes that affect the sensor (mode, device ID, thresholds, etc.) auto
 
 ## Running Locally
 
+> For full setup instructions see the [Local Development guide](../docs/local-development.md).
+
+
 ```bash
 # From the repository root
 cd app
