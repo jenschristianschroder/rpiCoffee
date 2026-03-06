@@ -64,6 +64,9 @@ _SETTINGS_REGISTRY: list[dict[str, str]] = [
     {"key": "LLM_TOP_P", "name": "Top-P", "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)", "type": "float"},
     {"key": "LLM_TTS", "name": "TTS Mode", "description": "Optimize output text for text-to-speech when enabled", "type": "bool"},
     {"key": "LLM_SYSTEM_MESSAGE", "name": "System Message", "description": "System prompt sent to the model to control tone, style, and output format", "type": "str"},
+    {"key": "LLM_BACKEND", "name": "Backend", "description": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+ / hailo-ollama", "type": "str"},
+    {"key": "LLM_MODEL", "name": "Model", "description": "Ollama model name (only used when LLM_BACKEND=ollama)", "type": "str"},
+    {"key": "LLM_KEEP_ALIVE", "name": "Keep Alive", "description": "Ollama keep_alive: -1 = keep model loaded forever, 0 = unload immediately, or seconds", "type": "int"},
 ]
 
 
@@ -78,6 +81,9 @@ def _load_settings() -> None:
     _runtime["LLM_TOP_P"] = float(os.environ.get("LLM_TOP_P", "0.9"))
     _runtime["LLM_TTS"] = os.environ.get("LLM_TTS", "true").lower() in ("true", "1", "yes")
     _runtime["LLM_SYSTEM_MESSAGE"] = os.environ.get("LLM_SYSTEM_MESSAGE", SYSTEM_PROMPT)
+    _runtime["LLM_BACKEND"] = os.environ.get("LLM_BACKEND", "llama-cpp")
+    _runtime["LLM_MODEL"] = os.environ.get("LLM_MODEL", "qwen2:1.5b")
+    _runtime["LLM_KEEP_ALIVE"] = int(os.environ.get("LLM_KEEP_ALIVE", "-1"))
 
     if SETTINGS_PATH.exists():
         try:

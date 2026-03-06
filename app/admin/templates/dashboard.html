@@ -1323,25 +1323,6 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                     {% if descriptions.get('LLM_OLLAMA_ENDPOINT') %}<small>{{ descriptions['LLM_OLLAMA_ENDPOINT'] }}</small>{% endif %}
                 </label>
             </div>
-            <div class="grid">
-                <label for="LLM_BACKEND">Backend
-                    <select id="LLM_BACKEND" name="LLM_BACKEND">
-                        <option value="llama-cpp" {% if config['LLM_BACKEND'] == 'llama-cpp' %}selected{% endif %}>llama-cpp</option>
-                        <option value="ollama" {% if config['LLM_BACKEND'] == 'ollama' %}selected{% endif %}>ollama</option>
-                    </select>
-                    {% if descriptions.get('LLM_BACKEND') %}<small>{{ descriptions['LLM_BACKEND'] }}</small>{% endif %}
-                </label>
-                <label for="LLM_MODEL">Model
-                    <input type="text" id="LLM_MODEL" name="LLM_MODEL" value="{{ config['LLM_MODEL'] }}"
-                           {% if config['LLM_BACKEND'] != 'ollama' %}disabled{% endif %}>
-                    {% if descriptions.get('LLM_MODEL') %}<small>{{ descriptions['LLM_MODEL'] }}</small>{% endif %}
-                </label>
-                <label for="LLM_KEEP_ALIVE">Keep Alive
-                    <input type="number" id="LLM_KEEP_ALIVE" name="LLM_KEEP_ALIVE" value="{{ config['LLM_KEEP_ALIVE'] }}"
-                           {% if config['LLM_BACKEND'] != 'ollama' %}disabled{% endif %}>
-                    {% if descriptions.get('LLM_KEEP_ALIVE') %}<small>{{ descriptions['LLM_KEEP_ALIVE'] }}</small>{% endif %}
-                </label>
-            </div>
         </fieldset>
 
         <fieldset>
@@ -1399,27 +1380,6 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 </div>
 
 <script>
-// Toggle LLM fields based on LLM_BACKEND selection:
-// - Show the correct endpoint field for the active backend
-// - Enable/disable Model and Keep Alive (ollama-only fields)
-(function() {
-    var backendSel = document.getElementById('LLM_BACKEND');
-    var modelInput = document.getElementById('LLM_MODEL');
-    var keepAliveInput = document.getElementById('LLM_KEEP_ALIVE');
-    var llamaEndpoint = document.getElementById('LLM_ENDPOINT').closest('label');
-    var ollamaEndpoint = document.getElementById('LLM_OLLAMA_ENDPOINT').closest('label');
-
-    function toggleBackendFields() {
-        var isOllama = backendSel.value === 'ollama';
-        modelInput.disabled = !isOllama;
-        keepAliveInput.disabled = !isOllama;
-        llamaEndpoint.style.display = isOllama ? 'none' : '';
-        ollamaEndpoint.style.display = isOllama ? '' : 'none';
-    }
-    backendSel.addEventListener('change', toggleBackendFields);
-    toggleBackendFields();
-})();
-
 // Toggle trigger source fields visibility
 (function() {
     var srcSel = document.getElementById('SENSOR_TRIGGER_SOURCES');
