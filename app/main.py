@@ -11,8 +11,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Request, UploadFile, File
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -572,6 +572,62 @@ async def api_promote_to_sample(request: Request):
     if new_name:
         return {"status": "promoted", "filename": new_name}
     return {"error": "Source file not found"}
+
+
+@app.get("/api/training-data/{label}/{filename}/download")
+async def api_download_training_file(label: str, filename: str):
+    """Download a specific training CSV file."""
+    file_path = training_data.get_training_file_path(label, filename)
+    if file_path is None:
+        return {"error": "File not found"}
+    logger.info("Training file download: %s/%s", label, filename)
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="text/csv",
+    )
+
+
+@app.post("/api/training-data/{label}/upload")
+async def api_upload_training_file(label: str, file: UploadFile = File(...)):
+    """Upload a CSV file as training data for the given label."""
+    if not file.filename:
+        return {"error": "No file provided"}
+    content = await file.read()
+    try:
+        saved_name = training_data.save_uploaded_training_file(label, file.filename, content)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    logger.info("Uploaded training file: %s/%s", label, saved_name)
+    return {"status": "uploaded", "label": label, "filename": saved_name}
+
+
+@app.get("/api/data-files/{filename}/download")
+async def api_download_sample_file(filename: str):
+    """Download a sample CSV file from /data/."""
+    file_path = training_data.get_sample_file_path(filename)
+    if file_path is None:
+        return {"error": "File not found or not a .csv.sample file"}
+    logger.info("Sample file download: %s", filename)
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="text/csv",
+    )
+
+
+@app.post("/api/data-files/upload")
+async def api_upload_sample_file(file: UploadFile = File(...)):
+    """Upload a .csv.sample file to /data/."""
+    if not file.filename:
+        return {"error": "No file provided"}
+    content = await file.read()
+    try:
+        saved_name = training_data.save_uploaded_sample_file(file.filename, content)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    logger.info("Uploaded sample file: %s", saved_name)
+    return {"status": "uploaded", "filename": saved_name}
 
 
 # ── Model Training API (proxied to classifier service) ───────────

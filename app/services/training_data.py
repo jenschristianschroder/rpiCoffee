@@ -11,6 +11,7 @@ Manages CSV files for ML training data collection:
 from __future__ import annotations
 
 import csv
+import io
 import logging
 import os
 import shutil
@@ -25,6 +26,9 @@ TRAINING_DIR = DATA_DIR / "training"
 
 # CSV column header for training files (matches the existing .csv.sample format)
 _CSV_HEADER = ["label", "elapsed_s", "acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z"]
+
+# Required columns for validating uploaded CSV files
+_REQUIRED_CSV_COLUMNS = frozenset(_CSV_HEADER)
 
 
 def save_recording(label: str, sensor_data: list[dict[str, float]]) -> str:
@@ -192,6 +196,119 @@ def delete_sample_file(filename: str) -> bool:
     file_path.unlink()
     logger.info("Deleted sample file: %s", filename)
     return True
+
+
+def get_training_file_path(label: str, filename: str) -> Path | None:
+    """
+    Return the Path for a training CSV file, or None if it does not exist
+    or is outside TRAINING_DIR (path-traversal guard).
+    """
+    file_path = TRAINING_DIR / label / filename
+    try:
+        file_path.resolve().relative_to(TRAINING_DIR.resolve())
+    except ValueError:
+        return None
+    if not file_path.exists() or not file_path.name.endswith(".csv"):
+        return None
+    return file_path
+
+
+def get_sample_file_path(filename: str) -> Path | None:
+    """
+    Return the Path for a sample CSV file, or None if it does not exist
+    or is outside DATA_DIR (path-traversal guard).
+    """
+    file_path = DATA_DIR / filename
+    try:
+        file_path.resolve().relative_to(DATA_DIR.resolve())
+    except ValueError:
+        return None
+    if not file_path.exists() or not file_path.name.endswith(".csv.sample"):
+        return None
+    return file_path
+
+
+def save_uploaded_training_file(label: str, filename: str, content: bytes) -> str:
+    """
+    Save uploaded CSV content as a training file under TRAINING_DIR/<label>/<filename>.
+
+    Validates that the filename ends with .csv, the content is non-empty, and
+    that the resulting path stays within TRAINING_DIR.  Returns the filename
+    that was stored.
+
+    Raises ValueError on validation failure.
+    """
+    if not filename.endswith(".csv"):
+        raise ValueError("Only .csv files are accepted for training data")
+
+    if not content:
+        raise ValueError("Uploaded file is empty")
+
+    # Sanitise: use only the basename so callers cannot inject path segments
+    safe_name = Path(filename).name
+    label_dir = TRAINING_DIR / label
+    label_dir.mkdir(parents=True, exist_ok=True)
+    file_path = label_dir / safe_name
+
+    # Path-traversal guard
+    try:
+        file_path.resolve().relative_to(TRAINING_DIR.resolve())
+    except ValueError:
+        raise ValueError("Invalid file path")
+
+    # Validate CSV structure (header row must be present)
+    text = content.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = next(reader)
+    except StopIteration:
+        raise ValueError("CSV file has no content")
+    if not _REQUIRED_CSV_COLUMNS.issubset(set(header)):
+        raise ValueError(f"CSV header must contain columns: {', '.join(sorted(_REQUIRED_CSV_COLUMNS))}")
+
+    file_path.write_bytes(content)
+    logger.info("Saved uploaded training file: %s/%s (%d bytes)", label, safe_name, len(content))
+    return safe_name
+
+
+def save_uploaded_sample_file(filename: str, content: bytes) -> str:
+    """
+    Save uploaded CSV content as a sample file in DATA_DIR.
+
+    Validates that the filename ends with .csv.sample, the content is
+    non-empty, and the path stays within DATA_DIR.  Returns the filename
+    that was stored.
+
+    Raises ValueError on validation failure.
+    """
+    if not filename.endswith(".csv.sample"):
+        raise ValueError("Only .csv.sample files are accepted for sample data")
+
+    if not content:
+        raise ValueError("Uploaded file is empty")
+
+    safe_name = Path(filename).name
+    file_path = DATA_DIR / safe_name
+
+    # Path-traversal guard
+    try:
+        file_path.resolve().relative_to(DATA_DIR.resolve())
+    except ValueError:
+        raise ValueError("Invalid file path")
+
+    # Validate CSV structure
+    text = content.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = next(reader)
+    except StopIteration:
+        raise ValueError("CSV file has no content")
+    if not _REQUIRED_CSV_COLUMNS.issubset(set(header)):
+        raise ValueError(f"CSV header must contain columns: {', '.join(sorted(_REQUIRED_CSV_COLUMNS))}")
+
+    file_path.write_bytes(content)
+    logger.info("Saved uploaded sample file: %s (%d bytes)", safe_name, len(content))
+    return safe_name
 
 
 def promote_training_to_sample(label: str, filename: str) -> str | None:
