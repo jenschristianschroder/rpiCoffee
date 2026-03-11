@@ -146,12 +146,270 @@ Available profiles: `classifier`, `llm`, `llm-ollama`, `tts`, `remote-save`.
 4. Register the client in `app/main.py` and wire it into `app/pipeline.py` if it is a pipeline stage.
 5. Expose configuration keys with defaults in `app/config.py` (`_DEFAULTS`).
 
+## Test Design & Automation
+
+### Test framework and location
+
+Use **pytest** with **pytest-asyncio** for all automated tests. Place tests under a top-level `tests/` directory mirroring the source tree:
+
+```
+tests/
+├── conftest.py               # Shared fixtures (mock config, sample sensor data, …)
+├── app/
+│   ├── test_config.py        # ConfigManager unit tests
+│   ├── test_pipeline.py      # Pipeline orchestration tests
+│   ├── sensor/
+│   │   └── test_reader.py    # Sensor reader / channel-filter tests
+│   └── services/
+│       ├── test_classifier_client.py
+│       ├── test_llm_client.py
+│       └── test_tts_client.py
+└── services/
+    ├── classifier/
+    │   └── test_classifier_app.py   # FastAPI TestClient tests
+    └── remote-save/
+        └── test_remote_save_app.py
+```
+
+Install test dependencies in a shared `requirements-test.txt` at the repository root:
+
+```
+pytest>=8.0
+pytest-asyncio>=0.23
+respx>=0.21          # Mock httpx requests
+httpx>=0.27          # Required by respx
+```
+
+Run all tests from the repository root:
+
+```bash
+pytest tests/ -v
+```
+
+### Async tests
+
+Mark async test functions and set the default asyncio mode in `pyproject.toml` or `pytest.ini`:
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+```
+
+```python
+# tests/app/test_pipeline.py
+import pytest
+from unittest.mock import AsyncMock, patch
+
+async def test_run_pipeline_returns_error_on_empty_sensor_data():
+    with patch("pipeline.read_sensor", new=AsyncMock(return_value=[])):
+        from pipeline import run_pipeline
+        result = await run_pipeline()
+    assert result["error"] is not None
+    assert result["sensor_samples"] == 0
+```
+
+### Config isolation
+
+Override the singleton in tests with a temporary `ConfigManager` instance backed by a temp `.env` file — never mutate the production singleton directly:
+
+```python
+# tests/conftest.py
+import pytest
+from pathlib import Path
+from config import ConfigManager
+
+@pytest.fixture()
+def test_config(tmp_path: Path) -> ConfigManager:
+    env_file = tmp_path / ".env"
+    env_file.write_text("SENSOR_MODE=mock\nSENSOR_DURATION_S=5\n")
+    return ConfigManager(env_file=env_file)
+```
+
+### Mocking HTTP service clients
+
+Use **respx** to mock `httpx` calls without starting a real server:
+
+```python
+import respx
+import httpx
+import pytest
+
+@pytest.mark.respx(base_url="http://classifier:8001")
+async def test_classifier_client_predict(respx_mock):
+    respx_mock.post("/predict").mock(
+        return_value=httpx.Response(200, json={"label": "espresso", "confidence": 0.95})
+    )
+    from services.classifier_client import ClassifierClient
+    client = ClassifierClient(endpoint="http://classifier:8001", enabled=True)
+    result = await client.predict([{"acc_x": 0.1, "acc_y": 0.0, "acc_z": 1.0,
+                                    "gyro_x": 0.0, "gyro_y": 0.0, "gyro_z": 0.0}])
+    assert result["label"] == "espresso"
+```
+
+### Mock sensor data fixture
+
+Provide a shared fixture for realistic sensor samples so individual tests stay concise:
+
+```python
+# tests/conftest.py
+@pytest.fixture()
+def sample_sensor_data() -> list[dict[str, float]]:
+    """30 samples of mock IMU data (~0.3 s at 100 Hz)."""
+    return [
+        {"acc_x": 0.01 * i, "acc_y": 0.0, "acc_z": 1.0,
+         "gyro_x": 0.0, "gyro_y": 0.0, "gyro_z": 0.0,
+         "elapsed_s": i * 0.01}
+        for i in range(30)
+    ]
+```
+
+### Service (microservice) tests
+
+Each microservice in `services/<name>/` should have its own tests using FastAPI's `TestClient`:
+
+```python
+# tests/services/classifier/test_classifier_app.py
+from fastapi.testclient import TestClient
+from app import app   # services/classifier/app.py
+
+client = TestClient(app)
+
+def test_health():
+    response = client.get("/health")
+    assert response.status_code == 200
+
+def test_predict_returns_label(sample_sensor_data):
+    response = client.post("/predict", json={"data": sample_sensor_data})
+    assert response.status_code == 200
+    assert "label" in response.json()
+```
+
+### What to test
+
+| Area | Tests to write |
+|------|----------------|
+| `config.py` | Layer priority, type casting (`_cast`), `set`/`get` round-trips, password hashing |
+| `sensor/reader.py` | `filter_sensor_channels` with acc/gyro disabled; mock-buffer read path |
+| Service clients | Happy path, HTTP error propagation, `enabled=False` short-circuit |
+| `pipeline.py` | Empty sensor data → error result; data-collect mode; stage skip on disabled service |
+| Microservice apps | `/health` endpoints; `/predict` with valid and invalid payloads |
+
+### Coverage
+
+Aim for **≥ 80 % line coverage** on `app/` code that can run without hardware. Exclude hardware-only paths (`picoquake_reader.py`, `picoquake_acq.py`) with `# pragma: no cover` or a `.coveragerc` omit rule.
+
+---
+
+## CI Workflows
+
+All CI definitions live in `.github/workflows/`. Use GitHub Actions.
+
+### Recommended workflow: `ci.yml`
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install -r services/classifier/requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Run tests
+        env:
+          SENSOR_MODE: mock
+          SETTINGS_DIR: /tmp/rpicoffee-test
+        run: pytest tests/ -v --tb=short
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+```
+
+### CI design principles
+
+- **Hardware-free by default**: Set `SENSOR_MODE=mock` and `SETTINGS_DIR` to a writable temp path in all CI jobs. Tests must never require physical hardware.
+- **Fail fast**: Use `--tb=short` so failures are easy to read in the Actions log.
+- **Single job for unit tests**: Keep the unit-test job fast (< 2 min). Long integration tests that need Docker services can live in a separate job gated by a `needs:` dependency.
+- **No secrets in tests**: Never hard-code credentials. Use `os.environ.get("VAR", "test-default")` in test fixtures.
+- **Matrix builds** (optional): Add a strategy matrix for Python 3.11 / 3.12 when adding new language features.
+
+### Adding a new CI job
+
+1. Create a new workflow file in `.github/workflows/` or add a new `job` block in `ci.yml`.
+2. Start from `ubuntu-latest` unless the job requires a specific OS.
+3. Always cache pip downloads with `actions/setup-python` `cache: pip`.
+4. Gate deployment or release jobs with `if: github.ref == 'refs/heads/main'` and `needs: test`.
+
+### Service integration tests (optional, Docker-based)
+
+For tests that need real microservices, start Docker Compose services in CI before running the test suite:
+
+```yaml
+  integration:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start backend services
+        run: docker compose --profile classifier up -d --wait
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install -r requirements-test.txt
+
+      - name: Run integration tests
+        env:
+          SENSOR_MODE: mock
+          CLASSIFIER_ENDPOINT: http://localhost:8001
+          SETTINGS_DIR: /tmp/rpicoffee-test
+        run: pytest tests/ -v -m integration
+
+      - name: Stop services
+        if: always()
+        run: docker compose down
+```
+
+Mark integration tests with `@pytest.mark.integration` so they can be run separately from fast unit tests.
+
+---
+
 ## Pull Request Guidelines
 
 - Keep PRs focused on a single concern.
 - Include a brief description of **why** the change is needed and **what** was changed.
 - Update the relevant `README.md` (root or service-level) if behaviour or configuration changes.
-- Test locally in `mock` sensor mode before submitting.
+- **Add or update tests** for any changed logic — new pipeline stages, service clients, config keys, and sensor paths all require corresponding test coverage.
+- All CI checks must pass before merging.
+- Test locally in `mock` sensor mode before submitting (`pytest tests/ -v`).
 - For new pipeline stages or sensor modes, add a corresponding mock/stub so the feature works without hardware.
 
 ## Security Notes
