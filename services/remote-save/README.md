@@ -37,7 +37,9 @@ All connection details are supplied via environment variables:
 | `DATAVERSE_COL_DATA` | Column for data content (optional) | `jenssch_data` |
 | `DATAVERSE_COL_TEXT` | Column for text content (optional) | `jenssch_text` |
 | `DATAVERSE_COL_CONFIDENCE` | Column for confidence score (optional) | `jenssch_confidence` |
-| `DATAVERSE_COL_COFFEE_TYPE` | Column for coffee type (optional) | `jenssch_coffeetype` |
+| `DATAVERSE_COL_COFFEE_TYPE` | Column for coffee type (optional) | `jenssch_type` |
+
+> **Sensitive values** (`DATAVERSE_TENANT_ID`, `DATAVERSE_CLIENT_ID`, `DATAVERSE_CLIENT_SECRET`) can also be set or updated at runtime via `PATCH /settings` without restarting the container. They are **never** returned in `GET /settings` responses — only a masked placeholder is shown.
 
 ## Build & Run
 
@@ -192,57 +194,123 @@ curl -X POST http://localhost:7000/save \
 
 Returns the current runtime settings for the remote-save service.
 
+**Sensitive values** (`DATAVERSE_TENANT_ID`, `DATAVERSE_CLIENT_ID`, `DATAVERSE_CLIENT_SECRET`) are **never** returned as plain text. Instead, the `value` field contains:
+- `"***set***"` — the value is configured and the service will use it
+- `""` — the value has not been set
+
+This allows operators to confirm that credentials are loaded without exposing them.
+
 #### Response
 
 ```json
-{
-  "settings": [
-    {
-      "key": "DATAVERSE_ENV_URL",
-      "name": "Dataverse Environment URL",
-      "description": "https://<org>.crm.dynamics.com",
-      "type": "str",
-      "value": "https://org.crm.dynamics.com"
-    },
-    {
-      "key": "DATAVERSE_TABLE",
-      "name": "Dataverse Table",
-      "description": "Logical name of the target table",
-      "type": "str",
-      "value": "jenssch_mytable"
-    },
-    {
-      "key": "DATAVERSE_COLUMN",
-      "name": "Dataverse File Column",
-      "description": "Column for file uploads",
-      "type": "str",
-      "value": "jenssch_file"
-    }
-  ]
-}
+[
+  {
+    "key": "DATAVERSE_ENV_URL",
+    "name": "Dataverse Environment URL",
+    "description": "Base URL of the Dataverse environment (e.g. https://<org>.crm.dynamics.com)",
+    "type": "str",
+    "secret": false,
+    "value": "https://org.crm.dynamics.com"
+  },
+  {
+    "key": "DATAVERSE_TABLE",
+    "name": "Dataverse Table",
+    "description": "Logical name of the Dataverse table to write records to",
+    "type": "str",
+    "secret": false,
+    "value": "jenssch_mytable"
+  },
+  {
+    "key": "DATAVERSE_COLUMN",
+    "name": "Dataverse File Column",
+    "description": "Logical name of the file column for CSV uploads",
+    "type": "str",
+    "secret": false,
+    "value": "jenssch_file"
+  },
+  {
+    "key": "DATAVERSE_TENANT_ID",
+    "name": "Azure AD Tenant ID",
+    "description": "Azure Active Directory tenant ID for the app registration (write-only)",
+    "type": "str",
+    "secret": true,
+    "value": "***set***"
+  },
+  {
+    "key": "DATAVERSE_CLIENT_ID",
+    "name": "Azure App Registration Client ID",
+    "description": "Client ID of the Azure app registration used to authenticate with Dataverse (write-only)",
+    "type": "str",
+    "secret": true,
+    "value": "***set***"
+  },
+  {
+    "key": "DATAVERSE_CLIENT_SECRET",
+    "name": "Azure App Registration Client Secret",
+    "description": "Client secret of the Azure app registration (write-only, never returned in GET responses)",
+    "type": "str",
+    "secret": true,
+    "value": "***set***"
+  },
+  {
+    "key": "DATAVERSE_COL_NAME",
+    "name": "Column: Record Name",
+    "description": "Dataverse column logical name for the record name field",
+    "type": "str",
+    "secret": false,
+    "value": "jenssch_name"
+  }
+]
 ```
 
 ### `PATCH /settings`
 
-Update one or more runtime settings. Only keys listed in the settings registry are accepted; unknown keys are silently ignored. Changes are persisted to `settings.json` inside the container's `/data` volume.
+Update one or more runtime settings. All keys listed in the settings registry are accepted, including sensitive (secret) ones. Unknown keys are silently ignored. Changes are persisted to `settings.json` inside the container's `/data` volume so they survive container restarts.
 
-#### Example Request
+**Sensitive values** (`DATAVERSE_TENANT_ID`, `DATAVERSE_CLIENT_ID`, `DATAVERSE_CLIENT_SECRET`) can be set via this endpoint but are **never** returned in `GET /settings` responses — only the masked placeholder (`"***set***"`) is shown. This enables switching Dataverse environments or Azure app registrations without code changes or container restarts.
+
+#### Example — update a non-sensitive setting
 
 ```bash
 curl -X PATCH http://localhost:7000/settings \
   -H "Content-Type: application/json" \
-  -d '{"DATAVERSE_TABLE": "jenssch_newtable"}'
+  -d '{"settings": {"DATAVERSE_TABLE": "jenssch_newtable"}}'
+```
+
+#### Example — switch to a different Azure app registration (write-only credentials)
+
+```bash
+curl -X PATCH http://localhost:7000/settings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "settings": {
+      "DATAVERSE_TENANT_ID": "new-tenant-id",
+      "DATAVERSE_CLIENT_ID": "new-client-id",
+      "DATAVERSE_CLIENT_SECRET": "new-client-secret"
+    }
+  }'
+```
+
+#### Example — switch to a different Dataverse environment
+
+```bash
+curl -X PATCH http://localhost:7000/settings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "settings": {
+      "DATAVERSE_ENV_URL": "https://neworg.crm.dynamics.com",
+      "DATAVERSE_TABLE": "jenssch_newtable"
+    }
+  }'
 ```
 
 #### Response
 
 ```json
 {
-  "settings": [ ... ]
+  "updated": ["DATAVERSE_TABLE"]
 }
 ```
-
-> **Note:** Secrets such as `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and `AZURE_TENANT_ID` are intentionally excluded from the settings endpoint for security.
 
 ## Interactive API Docs
 

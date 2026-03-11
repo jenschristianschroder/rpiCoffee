@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import sys
 from pathlib import Path
+from typing import Iterator
 from unittest.mock import patch
 
 import httpx
@@ -28,6 +30,17 @@ def _import_svc_app():
     return mod
 
 
+@contextlib.contextmanager
+def _runtime_override(svc, overrides: dict) -> Iterator[None]:
+    """Temporarily set keys in *svc._runtime*, restoring originals on exit."""
+    orig = {k: svc._runtime.get(k, "") for k in overrides}
+    svc._runtime.update(overrides)
+    try:
+        yield
+    finally:
+        svc._runtime.update(orig)
+
+
 @pytest.fixture()
 async def client(tmp_path):
     with patch.dict("os.environ", {
@@ -40,6 +53,8 @@ async def client(tmp_path):
         "DATAVERSE_CLIENT_SECRET": "secret",
     }):
         svc = _import_svc_app()
+        # Reload runtime settings from the patched environment
+        svc._load_settings()
         transport = ASGITransport(app=svc.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
@@ -65,10 +80,162 @@ class TestManifest:
 
 class TestSettings:
     @pytest.mark.asyncio
-    async def test_get_settings(self, client):
+    async def test_get_settings_returns_list(self, client):
         resp = await client.get("/settings")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        data = resp.json()
+        assert isinstance(data, list)
+
+    @pytest.mark.asyncio
+    async def test_get_settings_contains_all_keys(self, client):
+        """All registry keys must appear in the GET /settings response."""
+        resp = await client.get("/settings")
+        assert resp.status_code == 200
+        keys = {entry["key"] for entry in resp.json()}
+        expected = {
+            "DATAVERSE_ENV_URL", "DATAVERSE_TABLE", "DATAVERSE_COLUMN",
+            "DATAVERSE_TENANT_ID", "DATAVERSE_CLIENT_ID", "DATAVERSE_CLIENT_SECRET",
+            "DATAVERSE_COL_NAME", "DATAVERSE_COL_DATA", "DATAVERSE_COL_TEXT",
+            "DATAVERSE_COL_CONFIDENCE", "DATAVERSE_COL_COFFEE_TYPE",
+        }
+        assert expected == keys
+
+    @pytest.mark.asyncio
+    async def test_secrets_are_masked_when_set(self, client):
+        """Secret keys must return '***set***' when they have a value, never the real value."""
+        resp = await client.get("/settings")
+        assert resp.status_code == 200
+        secret_entries = [e for e in resp.json() if e.get("secret")]
+        assert len(secret_entries) == 3  # TENANT_ID, CLIENT_ID, CLIENT_SECRET
+        for entry in secret_entries:
+            assert entry["value"] == "***set***", (
+                f"Secret key {entry['key']} must be masked; got: {entry['value']!r}"
+            )
+            # The real values (e.g. "tenant", "client", "secret") must not appear
+            assert entry["value"] not in ("tenant", "client", "secret")
+
+    @pytest.mark.asyncio
+    async def test_secrets_are_empty_when_not_set(self, tmp_path):
+        """Secret keys return '' when no value is configured."""
+        svc = _import_svc_app()
+        secret_keys = ("DATAVERSE_TENANT_ID", "DATAVERSE_CLIENT_ID", "DATAVERSE_CLIENT_SECRET")
+        with _runtime_override(svc, {k: "" for k in secret_keys}):
+            transport = ASGITransport(app=svc.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                resp = await c.get("/settings")
+        assert resp.status_code == 200
+        for entry in resp.json():
+            if entry["key"] in secret_keys:
+                assert entry["value"] == "", f"Unset secret {entry['key']} should return ''"
+
+    @pytest.mark.asyncio
+    async def test_non_secret_settings_have_secret_flag_false(self, client):
+        """Non-secret entries must carry secret=False."""
+        resp = await client.get("/settings")
+        for entry in resp.json():
+            if entry["key"] not in ("DATAVERSE_TENANT_ID", "DATAVERSE_CLIENT_ID", "DATAVERSE_CLIENT_SECRET"):
+                assert entry.get("secret") is False, (
+                    f"Non-secret key {entry['key']} has unexpected secret flag"
+                )
+
+    @pytest.mark.asyncio
+    async def test_patch_non_secret_setting(self, client):
+        """PATCH /settings updates a non-secret setting and returns the updated key."""
+        resp = await client.patch("/settings", json={"settings": {"DATAVERSE_TABLE": "new_table"}})
+        assert resp.status_code == 200
+        assert "DATAVERSE_TABLE" in resp.json()["updated"]
+
+        # Verify the change is reflected in GET /settings
+        get_resp = await client.get("/settings")
+        table_entry = next(e for e in get_resp.json() if e["key"] == "DATAVERSE_TABLE")
+        assert table_entry["value"] == "new_table"
+
+    @pytest.mark.asyncio
+    async def test_patch_secret_setting_accepted(self, client):
+        """PATCH /settings must accept secret keys and confirm the update."""
+        resp = await client.patch("/settings", json={"settings": {
+            "DATAVERSE_CLIENT_SECRET": "brand-new-secret",
+        }})
+        assert resp.status_code == 200
+        assert "DATAVERSE_CLIENT_SECRET" in resp.json()["updated"]
+
+    @pytest.mark.asyncio
+    async def test_patch_secret_not_exposed_after_update(self, client):
+        """After a secret is updated via PATCH, GET /settings still returns the mask."""
+        await client.patch("/settings", json={"settings": {
+            "DATAVERSE_CLIENT_SECRET": "brand-new-secret",
+        }})
+        get_resp = await client.get("/settings")
+        secret_entry = next(e for e in get_resp.json() if e["key"] == "DATAVERSE_CLIENT_SECRET")
+        assert secret_entry["value"] == "***set***"
+        assert "brand-new-secret" not in str(get_resp.json())
+
+    @pytest.mark.asyncio
+    async def test_patch_unknown_key_ignored(self, client):
+        """Unknown keys in PATCH /settings payload must be silently ignored."""
+        resp = await client.patch("/settings", json={"settings": {"UNKNOWN_KEY": "value"}})
+        assert resp.status_code == 200
+        assert "UNKNOWN_KEY" not in resp.json()["updated"]
+
+    @pytest.mark.asyncio
+    async def test_switch_environment_and_app_reg_via_settings(self, client):
+        """End-to-end: switch both Dataverse env and Azure app reg via PATCH /settings.
+
+        This test confirms that the service can be reconfigured to a completely
+        different environment and app registration without code changes — only by
+        updating the /settings endpoint.
+        """
+        patch_resp = await client.patch("/settings", json={"settings": {
+            "DATAVERSE_ENV_URL": "https://neworg.crm.dynamics.com",
+            "DATAVERSE_TABLE": "new_table",
+            "DATAVERSE_TENANT_ID": "new-tenant",
+            "DATAVERSE_CLIENT_ID": "new-client-id",
+            "DATAVERSE_CLIENT_SECRET": "new-client-secret",
+        }})
+        assert patch_resp.status_code == 200
+        updated = set(patch_resp.json()["updated"])
+        assert updated == {
+            "DATAVERSE_ENV_URL", "DATAVERSE_TABLE",
+            "DATAVERSE_TENANT_ID", "DATAVERSE_CLIENT_ID", "DATAVERSE_CLIENT_SECRET",
+        }
+
+        # Verify non-secret values are persisted and readable
+        get_resp = await client.get("/settings")
+        settings_by_key = {e["key"]: e for e in get_resp.json()}
+        assert settings_by_key["DATAVERSE_ENV_URL"]["value"] == "https://neworg.crm.dynamics.com"
+        assert settings_by_key["DATAVERSE_TABLE"]["value"] == "new_table"
+
+        # Verify secrets are masked (not exposed) even after the update
+        for secret_key in ("DATAVERSE_TENANT_ID", "DATAVERSE_CLIENT_ID", "DATAVERSE_CLIENT_SECRET"):
+            assert settings_by_key[secret_key]["value"] == "***set***"
+            assert settings_by_key[secret_key]["secret"] is True
+
+        # Verify the raw values in _runtime were actually updated (used by /save)
+        svc = _import_svc_app()
+        assert svc._runtime["DATAVERSE_ENV_URL"] == "https://neworg.crm.dynamics.com"
+        assert svc._runtime["DATAVERSE_TENANT_ID"] == "new-tenant"
+        assert svc._runtime["DATAVERSE_CLIENT_ID"] == "new-client-id"
+        assert svc._runtime["DATAVERSE_CLIENT_SECRET"] == "new-client-secret"
+
+    @pytest.mark.asyncio
+    async def test_column_overrides_exposed_and_updatable(self, client):
+        """Column name override settings must be readable and updatable."""
+        # Defaults should be present
+        resp = await client.get("/settings")
+        settings_by_key = {e["key"]: e for e in resp.json()}
+        assert settings_by_key["DATAVERSE_COL_NAME"]["value"] == "jenssch_name"
+
+        # Update a column override
+        patch_resp = await client.patch("/settings", json={"settings": {
+            "DATAVERSE_COL_NAME": "custom_name_col",
+        }})
+        assert patch_resp.status_code == 200
+        assert "DATAVERSE_COL_NAME" in patch_resp.json()["updated"]
+
+        # Verify updated value is returned
+        get_resp = await client.get("/settings")
+        settings_by_key = {e["key"]: e for e in get_resp.json()}
+        assert settings_by_key["DATAVERSE_COL_NAME"]["value"] == "custom_name_col"
 
 
 class TestSave:
@@ -84,3 +251,22 @@ class TestSave:
             "confidence": 0.95,
         })
         assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_save_missing_config_returns_500(self, tmp_path):
+        """POST /save must return 500 when required configuration is missing."""
+        svc = _import_svc_app()
+        missing_keys = {
+            "DATAVERSE_ENV_URL": "", "DATAVERSE_TABLE": "", "DATAVERSE_COLUMN": "",
+            "DATAVERSE_TENANT_ID": "", "DATAVERSE_CLIENT_ID": "", "DATAVERSE_CLIENT_SECRET": "",
+        }
+        with _runtime_override(svc, missing_keys):
+            transport = ASGITransport(app=svc.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                resp = await c.post("/save", json={
+                    "name": "test-brew",
+                    "coffee_type": "espresso",
+                    "confidence": 0.9,
+                })
+        assert resp.status_code == 500
+        assert "Missing required configuration" in resp.json()["detail"]

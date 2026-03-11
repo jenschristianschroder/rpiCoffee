@@ -55,26 +55,107 @@ app = FastAPI(
 # ── Settings persistence ────────────────────────────────────────────────────
 _runtime: dict[str, Any] = {}
 
-_SETTINGS_REGISTRY: list[dict[str, str]] = [
+# All configuration items the service exposes via /settings.
+# Entries with "secret": True are write-only: GET /settings returns "***set***"
+# when they are populated and "" when they are not — the actual value is never
+# included in the response.  Secrets can be updated via PATCH /settings but
+# cannot be read back through the API.
+_SETTINGS_REGISTRY: list[dict[str, Any]] = [
+    # ── Dataverse environment ─────────────────────────────────────────────
     {
         "key": "DATAVERSE_ENV_URL", "name": "Dataverse Environment URL",
-        "description": "Base URL of the Dataverse environment", "type": "str",
+        "description": "Base URL of the Dataverse environment (e.g. https://<org>.crm.dynamics.com)",
+        "type": "str", "secret": False,
     },
     {
         "key": "DATAVERSE_TABLE", "name": "Dataverse Table",
-        "description": "Logical name of the Dataverse table to write records to", "type": "str",
+        "description": "Logical name of the Dataverse table to write records to",
+        "type": "str", "secret": False,
     },
     {
         "key": "DATAVERSE_COLUMN", "name": "Dataverse File Column",
-        "description": "Logical name of the file column for CSV uploads", "type": "str",
+        "description": "Logical name of the file column for CSV uploads",
+        "type": "str", "secret": False,
+    },
+    # ── Azure AD / app registration (write-only secrets) ─────────────────
+    # These values control which Azure AD tenant and app registration are used
+    # to authenticate against Dataverse.  They are stored in the runtime dict
+    # and persisted to settings.json so that the service can be switched to a
+    # different app registration or tenant without restarting the container.
+    # They are NEVER returned in GET /settings responses — only a masked
+    # placeholder is shown to indicate whether the value has been configured.
+    {
+        "key": "DATAVERSE_TENANT_ID", "name": "Azure AD Tenant ID",
+        "description": "Azure Active Directory tenant ID for the app registration (write-only)",
+        "type": "str", "secret": True,
+    },
+    {
+        "key": "DATAVERSE_CLIENT_ID", "name": "Azure App Registration Client ID",
+        "description": "Client ID of the Azure app registration used to authenticate with Dataverse (write-only)",
+        "type": "str", "secret": True,
+    },
+    {
+        "key": "DATAVERSE_CLIENT_SECRET", "name": "Azure App Registration Client Secret",
+        "description": "Client secret of the Azure app registration (write-only, never returned in GET responses)",
+        "type": "str", "secret": True,
+    },
+    # ── Dataverse column name overrides ──────────────────────────────────
+    {
+        "key": "DATAVERSE_COL_NAME", "name": "Column: Record Name",
+        "description": "Dataverse column logical name for the record name field",
+        "type": "str", "secret": False,
+    },
+    {
+        "key": "DATAVERSE_COL_DATA", "name": "Column: Data Content",
+        "description": "Dataverse column logical name for the data content field",
+        "type": "str", "secret": False,
+    },
+    {
+        "key": "DATAVERSE_COL_TEXT", "name": "Column: Generated Text",
+        "description": "Dataverse column logical name for the generated comment text field",
+        "type": "str", "secret": False,
+    },
+    {
+        "key": "DATAVERSE_COL_CONFIDENCE", "name": "Column: Confidence Score",
+        "description": "Dataverse column logical name for the classification confidence score field",
+        "type": "str", "secret": False,
+    },
+    {
+        "key": "DATAVERSE_COL_COFFEE_TYPE", "name": "Column: Coffee Type",
+        "description": "Dataverse column logical name for the coffee type option-set field",
+        "type": "str", "secret": False,
     },
 ]
 
+# Set of keys whose values must never appear in GET /settings responses.
+_SECRET_KEYS: set[str] = {e["key"] for e in _SETTINGS_REGISTRY if e.get("secret")}
+
+# Default values for optional settings (column name overrides).
+_DEFAULTS: dict[str, str] = {
+    "DATAVERSE_COL_NAME": "jenssch_name",
+    "DATAVERSE_COL_DATA": "jenssch_data",
+    "DATAVERSE_COL_TEXT": "jenssch_text",
+    "DATAVERSE_COL_CONFIDENCE": "jenssch_confidence",
+    "DATAVERSE_COL_COFFEE_TYPE": "jenssch_type",
+}
+
+
+def _get_setting(key: str) -> str:
+    """Return the runtime value for *key*, falling back to _DEFAULTS then ''."""
+    return _runtime.get(key) or _DEFAULTS.get(key, "")
+
 
 def _load_settings() -> None:
-    _runtime["DATAVERSE_ENV_URL"] = os.environ.get("DATAVERSE_ENV_URL", "")
-    _runtime["DATAVERSE_TABLE"] = os.environ.get("DATAVERSE_TABLE", "")
-    _runtime["DATAVERSE_COLUMN"] = os.environ.get("DATAVERSE_COLUMN", "")
+    """Populate _runtime from environment variables, then overlay persisted JSON.
+
+    Priority (highest wins): persisted settings.json > environment variables > defaults.
+    Secret values (DATAVERSE_TENANT_ID, DATAVERSE_CLIENT_ID, DATAVERSE_CLIENT_SECRET)
+    are loaded like any other setting so that the service can be reconfigured at
+    runtime without restarting the container.
+    """
+    for entry in _SETTINGS_REGISTRY:
+        key = entry["key"]
+        _runtime[key] = os.environ.get(key, _DEFAULTS.get(key, ""))
 
     if SETTINGS_PATH.exists():
         try:
@@ -261,22 +342,35 @@ def health() -> dict[str, str]:
 @app.post("/save", response_model=SaveResponse)
 def save(req: SaveRequest) -> SaveResponse:
     """Create a Dataverse record and optionally upload file content."""
-    try:
-        env_url = _env("DATAVERSE_ENV_URL")
-        table = _env("DATAVERSE_TABLE")
-        column = _env("DATAVERSE_COLUMN")
-        tenant_id = _env("DATAVERSE_TENANT_ID")
-        client_id = _env("DATAVERSE_CLIENT_ID")
-        client_secret = _env("DATAVERSE_CLIENT_SECRET")
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    # Read all settings from _runtime (env vars loaded at startup; can be
+    # overridden at runtime via PATCH /settings without restarting the service).
+    env_url = _runtime.get("DATAVERSE_ENV_URL", "")
+    table = _runtime.get("DATAVERSE_TABLE", "")
+    column = _runtime.get("DATAVERSE_COLUMN", "")
+    tenant_id = _runtime.get("DATAVERSE_TENANT_ID", "")
+    client_id = _runtime.get("DATAVERSE_CLIENT_ID", "")
+    client_secret = _runtime.get("DATAVERSE_CLIENT_SECRET", "")
 
-    # Column names (configurable via env vars)
-    col_name = os.getenv("DATAVERSE_COL_NAME", "jenssch_name")
-    col_data = os.getenv("DATAVERSE_COL_DATA", "jenssch_data")
-    col_text = os.getenv("DATAVERSE_COL_TEXT", "jenssch_text")
-    col_confidence = os.getenv("DATAVERSE_COL_CONFIDENCE", "jenssch_confidence")
-    col_coffee_type = os.getenv("DATAVERSE_COL_COFFEE_TYPE", "jenssch_type")
+    missing = [k for k, v in [
+        ("DATAVERSE_ENV_URL", env_url),
+        ("DATAVERSE_TABLE", table),
+        ("DATAVERSE_COLUMN", column),
+        ("DATAVERSE_TENANT_ID", tenant_id),
+        ("DATAVERSE_CLIENT_ID", client_id),
+        ("DATAVERSE_CLIENT_SECRET", client_secret),
+    ] if not v]
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Missing required configuration: {', '.join(missing)}",
+        )
+
+    # Column names (configurable via PATCH /settings)
+    col_name = _get_setting("DATAVERSE_COL_NAME")
+    col_data = _get_setting("DATAVERSE_COL_DATA")
+    col_text = _get_setting("DATAVERSE_COL_TEXT")
+    col_confidence = _get_setting("DATAVERSE_COL_CONFIDENCE")
+    col_coffee_type = _get_setting("DATAVERSE_COL_COFFEE_TYPE")
 
     # Convert coffee_type text to integer
     coffee_key = req.coffee_type.strip().lower()
@@ -386,14 +480,39 @@ class SettingsUpdate(BaseModel):
 
 @app.get("/settings")
 def get_settings():
-    return [
-        {**entry, "value": _runtime.get(entry["key"])}
-        for entry in _SETTINGS_REGISTRY
-    ]
+    """Return all runtime settings.
+
+    Secret values (DATAVERSE_TENANT_ID, DATAVERSE_CLIENT_ID,
+    DATAVERSE_CLIENT_SECRET) are never included in the response.
+    Instead, a placeholder is returned:
+      - ``"***set***"`` — the value is configured (but not readable via API)
+      - ``""``          — the value has not been set
+    """
+    result = []
+    for entry in _SETTINGS_REGISTRY:
+        key = entry["key"]
+        raw = _runtime.get(key, "")
+        if entry.get("secret"):
+            value = "***set***" if raw else ""
+        else:
+            value = raw
+        result.append({**entry, "value": value})
+    return result
 
 
 @app.patch("/settings")
 def update_settings(req: SettingsUpdate):
+    """Update one or more runtime settings.
+
+    All keys in the settings registry are accepted, including secrets.
+    Secret values (DATAVERSE_TENANT_ID, DATAVERSE_CLIENT_ID,
+    DATAVERSE_CLIENT_SECRET) are stored but never returned in GET /settings
+    responses.  This allows switching the Dataverse environment or Azure app
+    registration without code changes or container restarts.
+
+    Unknown keys are silently ignored.  Changes are persisted to settings.json
+    inside the container's /data volume so they survive container restarts.
+    """
     valid_keys = {e["key"] for e in _SETTINGS_REGISTRY}
     updated = []
     for key, value in req.settings.items():
