@@ -519,10 +519,240 @@ async function saveSensorConfig(e) {
     }
 }
 
+// ── Service Registry ────────────────────────────────────────
+let _registryServices = [];
+
+async function loadRegistry() {
+    try {
+        const r = await fetch('/api/registry/services');
+        _registryServices = await r.json();
+        renderRegistryTable();
+        renderRegistryStatusDots();
+        renderServiceSettingsPanels();
+    } catch (e) {
+        console.error('Registry load failed', e);
+    }
+}
+
+function renderRegistryStatusDots() {
+    const container = document.getElementById('registry-status-dots');
+    if (!container) return;
+    var html = '';
+    _registryServices.forEach(function(svc) {
+        html += '<div>'
+            + '<span id="status-' + svc.name.replace(/-/g, '_') + '" class="status-dot gray" title="Checking…"></span>'
+            + '<strong>' + escHtml(svc.name) + '</strong>'
+            + (svc.manifest ? ' <small>(' + escHtml(svc.manifest.description || '') + ')</small>' : '')
+            + '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function renderRegistryTable() {
+    const tbody = document.getElementById('registry-tbody');
+    if (!_registryServices.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--pico-muted-color);">No services registered.</td></tr>';
+        return;
+    }
+    var html = '';
+    _registryServices.forEach(function(svc) {
+        var version = svc.manifest ? svc.manifest.version : '—';
+        var desc = svc.manifest ? (svc.manifest.description || '') : '';
+        html += '<tr data-service="' + escAttr(svc.name) + '">'
+            + '<td><span class="status-dot gray reg-health-dot" data-svc="' + escAttr(svc.name) + '" title="Checking…"></span></td>'
+            + '<td><strong>' + escHtml(svc.name) + '</strong>'
+            + (desc ? '<br><small style="color:var(--pico-muted-color);">' + escHtml(desc) + '</small>' : '')
+            + '</td>'
+            + '<td><small>' + escHtml(svc.endpoint) + '</small></td>'
+            + '<td>' + escHtml(version) + '</td>'
+            + '<td><input type="checkbox" role="switch" ' + (svc.enabled ? 'checked' : '')
+            + ' onchange="toggleServiceEnabled(\'' + escAttr(svc.name) + '\', this.checked)"></td>'
+            + '<td style="white-space:nowrap;">'
+            + '<button onclick="editService(\'' + escAttr(svc.name) + '\')" style="padding:0.15rem 0.4rem;font-size:0.75rem;margin-right:0.3rem;" title="Edit endpoint">&#9998;</button>'
+            + '<button onclick="refreshManifest(\'' + escAttr(svc.name) + '\')" style="padding:0.15rem 0.4rem;font-size:0.75rem;margin-right:0.3rem;" title="Refresh manifest">&#8635;</button>'
+            + '<button onclick="removeService(\'' + escAttr(svc.name) + '\')" style="padding:0.15rem 0.4rem;font-size:0.75rem;background:var(--pico-del-color);" title="Remove">&#10005;</button>'
+            + '</td></tr>';
+        // Expandable manifest details
+        if (svc.manifest) {
+            html += '<tr class="manifest-row" style="display:none;" data-manifest-for="' + escAttr(svc.name) + '">'
+                + '<td colspan="6" style="padding:0.5rem 1rem;background:var(--pico-card-background-color);">'
+                + renderManifestDetails(svc.manifest)
+                + '</td></tr>';
+        }
+    });
+    tbody.innerHTML = html;
+
+    // Click to expand manifest
+    tbody.querySelectorAll('tr[data-service]').forEach(function(row) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('button, input, a')) return;
+            var name = row.dataset.service;
+            var mRow = tbody.querySelector('tr[data-manifest-for="' + name + '"]');
+            if (mRow) mRow.style.display = mRow.style.display === 'none' ? '' : 'none';
+        });
+    });
+}
+
+function renderManifestDetails(m) {
+    var html = '<div style="font-size:0.85rem;">';
+    if (m.inputs && m.inputs.length) {
+        html += '<strong>Inputs:</strong><ul style="margin:0.2rem 0 0.5rem 1rem;">';
+        m.inputs.forEach(function(inp) {
+            html += '<li><code>' + escHtml(inp.name) + '</code> <small>(' + escHtml(inp.type) + (inp.required ? ', required' : '') + ')</small>'
+                + (inp.description ? ' — ' + escHtml(inp.description) : '') + '</li>';
+        });
+        html += '</ul>';
+    }
+    if (m.outputs && m.outputs.length) {
+        html += '<strong>Outputs:</strong><ul style="margin:0.2rem 0 0.5rem 1rem;">';
+        m.outputs.forEach(function(out) {
+            html += '<li><code>' + escHtml(out.name) + '</code> <small>(' + escHtml(out.type) + ')</small>'
+                + (out.description ? ' — ' + escHtml(out.description) : '') + '</li>';
+        });
+        html += '</ul>';
+    }
+    if (m.endpoints) {
+        html += '<strong>Endpoints:</strong><ul style="margin:0.2rem 0 0.5rem 1rem;">';
+        for (var key in m.endpoints) {
+            var ep = m.endpoints[key];
+            if (ep) html += '<li><code>' + escHtml(key) + '</code>: ' + escHtml(ep.method) + ' ' + escHtml(ep.path) + '</li>';
+        }
+        html += '</ul>';
+    }
+    if (m.failure_modes && m.failure_modes.length) {
+        html += '<strong>Failure modes:</strong> ' + m.failure_modes.map(escHtml).join(', ');
+    }
+    html += '</div>';
+    return html;
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
+
+async function registerService() {
+    var name = document.getElementById('reg-name').value.trim();
+    var endpoint = document.getElementById('reg-endpoint').value.trim();
+    var statusEl = document.getElementById('reg-status');
+    if (!name || !endpoint) { statusEl.textContent = 'Name and endpoint are required.'; statusEl.style.color = 'var(--pico-del-color)'; return; }
+    statusEl.textContent = 'Registering…'; statusEl.style.color = 'var(--pico-muted-color)';
+    try {
+        var r = await fetch('/api/registry/services', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, endpoint: endpoint})
+        });
+        if (!r.ok) { var err = await r.json(); throw new Error(err.detail || 'HTTP ' + r.status); }
+        statusEl.textContent = 'Registered ✓'; statusEl.style.color = 'var(--pico-ins-color)';
+        document.getElementById('reg-name').value = '';
+        document.getElementById('reg-endpoint').value = '';
+        await loadRegistry();
+        checkServices();
+    } catch (e) {
+        statusEl.textContent = e.message; statusEl.style.color = 'var(--pico-del-color)';
+    }
+}
+
+async function removeService(name) {
+    if (!confirm('Remove service "' + name + '"?')) return;
+    try {
+        await fetch('/api/registry/services/' + encodeURIComponent(name), { method: 'DELETE' });
+        await loadRegistry();
+        checkServices();
+    } catch (e) { console.error(e); }
+}
+
+async function refreshManifest(name) {
+    try {
+        await fetch('/api/registry/services/' + encodeURIComponent(name) + '/refresh', { method: 'POST' });
+        await loadRegistry();
+    } catch (e) { console.error(e); }
+}
+
+async function toggleServiceEnabled(name, enabled) {
+    try {
+        await fetch('/api/registry/services/' + encodeURIComponent(name) + '/enabled', {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enabled})
+        });
+        await loadRegistry();
+        checkServices();
+    } catch (e) { console.error(e); }
+}
+
+function editService(name) {
+    var row = document.querySelector('tr[data-service="' + name + '"]');
+    if (!row) return;
+    var svc = _registryServices.find(function(s) { return s.name === name; });
+    if (!svc) return;
+    var epCell = row.children[2];
+    epCell.innerHTML = '<div style="display:flex;gap:0.3rem;align-items:center;">'
+        + '<input type="text" id="edit-ep-' + escAttr(name) + '" value="' + escAttr(svc.endpoint) + '" style="font-size:0.8rem;padding:0.2rem 0.4rem;margin:0;flex:1;" />'
+        + '<button onclick="saveServiceEdit(\'' + escAttr(name) + '\')" style="padding:0.15rem 0.4rem;font-size:0.75rem;" title="Save">&#10003;</button>'
+        + '<button onclick="loadRegistry()" style="padding:0.15rem 0.4rem;font-size:0.75rem;" title="Cancel">&#10005;</button>'
+        + '</div>';
+    document.getElementById('edit-ep-' + name).focus();
+}
+
+async function saveServiceEdit(name) {
+    var input = document.getElementById('edit-ep-' + name);
+    if (!input) return;
+    var endpoint = input.value.trim();
+    if (!endpoint) return;
+    try {
+        var r = await fetch('/api/registry/services/' + encodeURIComponent(name), {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({endpoint: endpoint})
+        });
+        if (!r.ok) { var err = await r.json(); throw new Error(err.detail || 'HTTP ' + r.status); }
+        await loadRegistry();
+        checkServices();
+    } catch (e) { console.error(e); alert('Failed to update: ' + e.message); }
+}
+
+async function checkRegistryHealth() {
+    try {
+        var r = await fetch('/api/registry/health');
+        var data = await r.json();
+        for (var name in data) {
+            var dots = document.querySelectorAll('.reg-health-dot[data-svc="' + name + '"]');
+            dots.forEach(function(dot) {
+                var info = data[name];
+                if (info.status === 'unreachable' || info.error) {
+                    dot.className = 'status-dot red reg-health-dot';
+                    dot.title = info.error || 'Unreachable';
+                } else {
+                    dot.className = 'status-dot green reg-health-dot';
+                    dot.title = 'Healthy';
+                }
+            });
+            // Also update the service-status-card dots
+            var statusDot = document.getElementById('status-' + name.replace(/-/g, '_'));
+            if (statusDot) {
+                var svc = _registryServices.find(function(s) { return s.name === name; });
+                if (svc && !svc.enabled) {
+                    statusDot.className = 'status-dot gray';
+                    statusDot.title = 'Disabled';
+                } else if (data[name].status === 'unreachable' || data[name].error) {
+                    statusDot.className = 'status-dot red';
+                    statusDot.title = data[name].error || 'Unreachable';
+                } else {
+                    statusDot.className = 'status-dot green';
+                    statusDot.title = 'Healthy';
+                }
+            }
+        }
+    } catch (e) { console.error('Registry health check failed', e); }
+}
+
 // ── Init ───────────────────────────────────────────────────
 setInterval(checkServices, 10000);
+setInterval(checkRegistryHealth, 10000);
 document.addEventListener('DOMContentLoaded', function() {
     checkServices();
+    loadRegistry().then(checkRegistryHealth);
     createLiveChart();
     updateRmsLabel();
     connectStream();
@@ -538,7 +768,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     // Restore collapsed state from sessionStorage (default: collapsed except service-status & live-sensor)
-    var _defaultOpen = ['service-status-card', 'live-sensor-card'];
+    var _defaultOpen = ['service-status-card', 'live-sensor-card', 'service-registry-card'];
     document.querySelectorAll('.card[id]').forEach(function(card) {
         var stored = sessionStorage.getItem('card-' + card.id);
         if (stored === '1') card.classList.add('collapsed');
@@ -568,23 +798,52 @@ document.addEventListener('DOMContentLoaded', function() {
             {% endif %}
             <small id="sensor-error" style="color:var(--pico-del-color);display:none;margin-left:0.5rem;"></small>
         </div>
-        <div>
-            <span id="status-classifier" class="status-dot gray" title="Checking…"></span>
-            <strong>classifier</strong> <small>(coffee type)</small>
-        </div>
-        <div>
-            <span id="status-llm" class="status-dot gray" title="Checking…"></span>
-            <strong>llm</strong> <small>(text gen)</small>
-        </div>
-        <div>
-            <span id="status-tts" class="status-dot gray" title="Checking…"></span>
-            <strong>tts</strong> <small>(speech)</small>
-        </div>
-        <div>
-            <span id="status-remote_save" class="status-dot gray" title="Checking…"></span>
-            <strong>remote save</strong> <small>(logging)</small>
+        <div id="registry-status-dots" style="display:contents;">
+            <!-- Populated dynamically from service registry -->
         </div>
     </div>
+</div>
+
+<!-- Service Registry -->
+<div class="card" id="service-registry-card">
+    <h3>&#128268; Service Registry</h3>
+    <p style="font-size:0.85rem;color:var(--pico-muted-color);margin-bottom:0.75rem;">
+        Manage registered pipeline services. Services self-describe via manifests.
+    </p>
+    <div id="registry-table-wrap">
+        <table role="grid" id="registry-table" style="font-size:0.9rem;">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Name</th>
+                    <th>Endpoint</th>
+                    <th>Version</th>
+                    <th>Enabled</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="registry-tbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--pico-muted-color);">Loading…</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <details style="margin-top:0.75rem;">
+        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;">+ Register New Service</summary>
+        <div style="margin-top:0.5rem;">
+            <div class="grid" style="align-items:end;">
+                <label for="reg-name">Name
+                    <input type="text" id="reg-name" placeholder="my-service" pattern="[a-z0-9\-]+" title="Lowercase letters, numbers, hyphens">
+                </label>
+                <label for="reg-endpoint">Endpoint URL
+                    <input type="url" id="reg-endpoint" placeholder="http://host:port">
+                </label>
+                <div>
+                    <button onclick="registerService()" style="margin-bottom:1.2rem;">Register</button>
+                </div>
+            </div>
+            <small id="reg-status" style="color:var(--pico-muted-color);"></small>
+        </div>
+    </details>
 </div>
 
 <!-- Live Sensor Feed -->
@@ -1283,84 +1542,46 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 
 <div class="card" id="configuration-card">
     <h3>&#9881; Pipeline Configuration</h3>
+
+    <!-- Dynamic pipeline steps from registry -->
+    <div id="pipeline-steps-wrap" style="margin-bottom:1rem;">
+        <p style="font-size:0.85rem;color:var(--pico-muted-color);margin-bottom:0.5rem;">
+            Pipeline execution order. Steps run sequentially after sensor data is collected.
+            <a href="/admin/pipeline" style="margin-left:0.5rem;">Open Pipeline Editor →</a>
+        </p>
+
+        <!-- Read-only pipeline flow visualization -->
+        <div id="pipeline-flow" style="display:flex;align-items:center;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.75rem;padding:0.5rem;background:var(--pico-card-background-color);border:1px solid var(--pico-muted-border-color);border-radius:6px;overflow-x:auto;">
+            <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.3rem 0.6rem;border-radius:4px;border:1px solid #22c55e;font-size:0.8rem;font-weight:600;color:#22c55e;">
+                &#9655; Sensor
+            </span>
+            <span id="pipeline-flow-steps" style="display:contents;">
+                <!-- Populated by JS -->
+            </span>
+        </div>
+
+        <table role="grid" id="pipeline-steps-table" style="font-size:0.9rem;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Service</th>
+                    <th>Input Mapping</th>
+                    <th>On Failure</th>
+                    <th>Enabled</th>
+                </tr>
+            </thead>
+            <tbody id="pipeline-steps-tbody">
+                <tr><td colspan="5" style="text-align:center;color:var(--pico-muted-color);">Loading…</td></tr>
+            </tbody>
+        </table>
+        <div style="display:flex;gap:0.8rem;align-items:center;margin-top:0.5rem;">
+            <button onclick="validatePipeline()" style="padding:0.3rem 0.8rem;font-size:0.85rem;">Validate</button>
+            <span id="pipeline-validate-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>
+        </div>
+    </div>
+
+    <!-- App settings (non-service) -->
     <form method="post" action="/admin/settings">
-
-        <fieldset>
-            <legend><strong>Classifier</strong> – Coffee Type</legend>
-            <div class="grid">
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    Enabled
-                    <input type="checkbox" name="CLASSIFIER_ENABLED" role="switch"
-                           {% if config['CLASSIFIER_ENABLED'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('CLASSIFIER_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['CLASSIFIER_ENABLED'] }}</small>{% endif %}
-                </div>
-                <label for="CLASSIFIER_ENDPOINT">Endpoint
-                    <input type="text" id="CLASSIFIER_ENDPOINT" name="CLASSIFIER_ENDPOINT" value="{{ config['CLASSIFIER_ENDPOINT'] }}">
-                    {% if descriptions.get('CLASSIFIER_ENDPOINT') %}<small>{{ descriptions['CLASSIFIER_ENDPOINT'] }}</small>{% endif %}
-                </label>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend><strong>LLM</strong> – Text Generation</legend>
-            <div class="grid">
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    Enabled
-                    <input type="checkbox" name="LLM_ENABLED" role="switch"
-                           {% if config['LLM_ENABLED'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('LLM_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['LLM_ENABLED'] }}</small>{% endif %}
-                </div>
-                <label for="LLM_ENDPOINT">Endpoint (llama-cpp)
-                    <input type="text" id="LLM_ENDPOINT" name="LLM_ENDPOINT" value="{{ config['LLM_ENDPOINT'] }}">
-                    {% if descriptions.get('LLM_ENDPOINT') %}<small>{{ descriptions['LLM_ENDPOINT'] }}</small>{% endif %}
-                </label>
-                <label for="LLM_OLLAMA_ENDPOINT">Endpoint (ollama)
-                    <input type="text" id="LLM_OLLAMA_ENDPOINT" name="LLM_OLLAMA_ENDPOINT" value="{{ config['LLM_OLLAMA_ENDPOINT'] }}">
-                    {% if descriptions.get('LLM_OLLAMA_ENDPOINT') %}<small>{{ descriptions['LLM_OLLAMA_ENDPOINT'] }}</small>{% endif %}
-                </label>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend><strong>TTS</strong> – Text-to-Speech</legend>
-            <div class="grid">
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    Enabled
-                    <input type="checkbox" name="TTS_ENABLED" role="switch"
-                           {% if config['TTS_ENABLED'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('TTS_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['TTS_ENABLED'] }}</small>{% endif %}
-                </div>
-                <label for="TTS_ENDPOINT">Endpoint
-                    <input type="text" id="TTS_ENDPOINT" name="TTS_ENDPOINT" value="{{ config['TTS_ENDPOINT'] }}">
-                    {% if descriptions.get('TTS_ENDPOINT') %}<small>{{ descriptions['TTS_ENDPOINT'] }}</small>{% endif %}
-                </label>
-            </div>
-        </fieldset>
-
-        <fieldset>
-            <legend><strong>Remote Save</strong> – Brew Logging</legend>
-            <div class="grid">
-                <div>
-                <label style="display:flex;align-items:center;gap:0.5rem;">
-                    Enabled
-                    <input type="checkbox" name="REMOTE_SAVE_ENABLED" role="switch"
-                           {% if config['REMOTE_SAVE_ENABLED'] %}checked{% endif %}>
-                </label>
-                {% if descriptions.get('REMOTE_SAVE_ENABLED') %}<small style="color:var(--pico-muted-color);">{{ descriptions['REMOTE_SAVE_ENABLED'] }}</small>{% endif %}
-                </div>
-                <label for="REMOTE_SAVE_ENDPOINT">Endpoint
-                    <input type="text" id="REMOTE_SAVE_ENDPOINT" name="REMOTE_SAVE_ENDPOINT" value="{{ config['REMOTE_SAVE_ENDPOINT'] }}">
-                    {% if descriptions.get('REMOTE_SAVE_ENDPOINT') %}<small>{{ descriptions['REMOTE_SAVE_ENDPOINT'] }}</small>{% endif %}
-                </label>
-            </div>
-        </fieldset>
-
         <fieldset>
             <legend><strong>App</strong> – Interface Options</legend>
             <div class="grid">
@@ -1374,10 +1595,82 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
                 </div>
             </div>
         </fieldset>
-
         <button type="submit">Save Settings</button>
     </form>
 </div>
+
+<script>
+async function loadPipelineSteps() {
+    try {
+        var r = await fetch('/api/registry/pipeline');
+        var data = await r.json();
+        renderPipelineSteps(data.pipeline || []);
+    } catch (e) {
+        console.error('Pipeline load failed', e);
+    }
+}
+
+function renderPipelineSteps(steps) {
+    var tbody = document.getElementById('pipeline-steps-tbody');
+    var flowContainer = document.getElementById('pipeline-flow-steps');
+
+    // Flow visualization
+    var flowHtml = '';
+    steps.forEach(function(step) {
+        var color = step.enabled ? 'var(--pico-primary-background)' : 'var(--pico-muted-color)';
+        flowHtml += '<span style="color:var(--pico-muted-color);font-size:0.9rem;">→</span>'
+            + '<span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.3rem 0.6rem;border-radius:4px;'
+            + 'border:1px solid ' + color + ';font-size:0.8rem;font-weight:600;'
+            + (step.enabled ? '' : 'opacity:0.5;text-decoration:line-through;')
+            + '">' + escHtml(step.service) + '</span>';
+    });
+    if (flowContainer) flowContainer.innerHTML = flowHtml;
+
+    // Table
+    if (!steps.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--pico-muted-color);">No pipeline steps configured.</td></tr>';
+        return;
+    }
+    var html = '';
+    steps.forEach(function(step, idx) {
+        var inputs = [];
+        for (var key in step.input_map) {
+            inputs.push('<code>' + escHtml(key) + '</code> ← <code>' + escHtml(step.input_map[key]) + '</code>');
+        }
+        html += '<tr>'
+            + '<td>' + (idx + 1) + '</td>'
+            + '<td><strong>' + escHtml(step.service) + '</strong></td>'
+            + '<td style="font-size:0.8rem;">' + (inputs.length ? inputs.join('<br>') : '—') + '</td>'
+            + '<td><small>' + escHtml(step.on_failure) + '</small></td>'
+            + '<td>' + (step.enabled ? '✓' : '✗') + '</td>'
+            + '</tr>';
+    });
+    tbody.innerHTML = html;
+}
+
+async function validatePipeline() {
+    var statusEl = document.getElementById('pipeline-validate-status');
+    statusEl.textContent = 'Validating…';
+    statusEl.style.color = 'var(--pico-muted-color)';
+    try {
+        var r = await fetch('/api/registry/pipeline/validate', { method: 'POST' });
+        var data = await r.json();
+        if (data.valid) {
+            statusEl.textContent = '✓ Pipeline is valid';
+            statusEl.style.color = 'var(--pico-ins-color)';
+        } else {
+            statusEl.innerHTML = '✗ Issues:<br>' + data.issues.map(function(i) { return '• ' + escHtml(i); }).join('<br>');
+            statusEl.style.color = 'var(--pico-del-color)';
+        }
+    } catch (e) {
+        statusEl.textContent = 'Validation failed';
+        statusEl.style.color = 'var(--pico-del-color)';
+    }
+}
+
+// Load pipeline steps on page load
+document.addEventListener('DOMContentLoaded', function() { loadPipelineSteps(); });
+</script>
 
 <script>
 // Toggle trigger source fields visibility
@@ -1413,38 +1706,51 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
 })();
 </script>
 
-<!-- Service Settings (per-container, fetched dynamically) -->
+<!-- Service Settings (per-container, fetched dynamically from registry) -->
 <div class="card" id="service-settings-card">
     <h3>&#128736; Service Settings</h3>
     <p style="font-size:0.85rem;color:var(--pico-muted-color);margin-bottom:1rem;">
         Runtime configuration for each backend container. Changes are persisted inside the container volume.
     </p>
-
-    {% for svc_name, svc_label in [("classifier", "Classifier"), ("llm", "LLM"), ("tts", "TTS"), ("remote-save", "Remote Save")] %}
-    <details class="svc-settings-panel" data-service="{{ svc_name }}" style="margin-bottom:1rem;">
-        <summary style="cursor:pointer;font-weight:600;">{{ svc_label }}</summary>
-        <div class="svc-settings-body" style="padding:0.75rem 0;">
-            <p style="color:var(--pico-muted-color);font-size:0.85rem;">Loading…</p>
-        </div>
-    </details>
-    {% endfor %}
+    <div id="service-settings-panels">
+        <!-- Populated dynamically from service registry -->
+        <p style="color:var(--pico-muted-color);font-size:0.85rem;">Loading…</p>
+    </div>
 </div>
 
 <script>
-(function() {
-    // Fetch and render settings when a panel is opened (always refetch)
-    document.querySelectorAll('.svc-settings-panel').forEach(function(panel) {
+function renderServiceSettingsPanels() {
+    var container = document.getElementById('service-settings-panels');
+    if (!_registryServices.length) {
+        container.innerHTML = '<p style="color:var(--pico-muted-color);font-size:0.85rem;">No services registered.</p>';
+        return;
+    }
+    var html = '';
+    _registryServices.forEach(function(svc) {
+        // Only show settings panel for services that have a settings endpoint
+        var hasSettings = svc.manifest && svc.manifest.endpoints && svc.manifest.endpoints.settings;
+        if (!hasSettings) return;
+        html += '<details class="svc-settings-panel" data-service="' + escAttr(svc.name) + '" style="margin-bottom:1rem;">'
+            + '<summary style="cursor:pointer;font-weight:600;">' + escHtml(svc.name) + '</summary>'
+            + '<div class="svc-settings-body" style="padding:0.75rem 0;">'
+            + '<p style="color:var(--pico-muted-color);font-size:0.85rem;">Loading…</p>'
+            + '</div></details>';
+    });
+    container.innerHTML = html || '<p style="color:var(--pico-muted-color);font-size:0.85rem;">No services with configurable settings.</p>';
+
+    // Attach toggle handlers
+    container.querySelectorAll('.svc-settings-panel').forEach(function(panel) {
         panel.addEventListener('toggle', async function() {
             if (!panel.open) return;
             var svc = panel.dataset.service;
             var body = panel.querySelector('.svc-settings-body');
             body.innerHTML = '<p style="color:var(--pico-muted-color);font-size:0.85rem;">Loading…</p>';
             try {
-                var r = await fetch('/api/services/' + svc + '/settings');
+                var r = await fetch('/api/services/' + encodeURIComponent(svc) + '/settings');
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 var settings = await r.json();
                 if (settings.error) {
-                    body.innerHTML = '<p style="color:var(--pico-del-color);">' + settings.error + '</p>';
+                    body.innerHTML = '<p style="color:var(--pico-del-color);">' + escHtml(settings.error) + '</p>';
                     return;
                 }
                 if (!Array.isArray(settings) || settings.length === 0) {
@@ -1457,92 +1763,92 @@ document.addEventListener('DOMContentLoaded', loadModelInfo);
             }
         });
     });
+}
 
-    function renderSettingsForm(container, svc, settings) {
-        var html = '<form class="svc-form" data-service="' + svc + '">';
-        settings.forEach(function(s) {
-            var inputHtml = '';
-            if (s.type === 'bool') {
-                var checked = (s.value === true || s.value === 'true') ? ' checked' : '';
-                inputHtml = '<label style="display:flex;align-items:center;gap:0.5rem;">'
-                    + s.name
-                    + '<input type="checkbox" role="switch" name="' + s.key + '"' + checked + '>'
-                    + '</label>';
-            } else if (s.type === 'float') {
-                inputHtml = '<label>' + s.name
-                    + '<input type="number" step="any" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
-                    + '</label>';
-            } else if (s.type === 'int') {
-                inputHtml = '<label>' + s.name
-                    + '<input type="number" step="1" name="' + s.key + '" value="' + (s.value != null ? s.value : '') + '">'
+function renderSettingsForm(container, svc, settings) {
+    var html = '<form class="svc-form" data-service="' + escAttr(svc) + '">';
+    settings.forEach(function(s) {
+        var inputHtml = '';
+        if (s.type === 'bool') {
+            var checked = (s.value === true || s.value === 'true') ? ' checked' : '';
+            inputHtml = '<label style="display:flex;align-items:center;gap:0.5rem;">'
+                + escHtml(s.name)
+                + '<input type="checkbox" role="switch" name="' + escAttr(s.key) + '"' + checked + '>'
+                + '</label>';
+        } else if (s.type === 'float') {
+            inputHtml = '<label>' + escHtml(s.name)
+                + '<input type="number" step="any" name="' + escAttr(s.key) + '" value="' + (s.value != null ? s.value : '') + '">'
+                + '</label>';
+        } else if (s.type === 'int') {
+            inputHtml = '<label>' + escHtml(s.name)
+                + '<input type="number" step="1" name="' + escAttr(s.key) + '" value="' + (s.value != null ? s.value : '') + '">'
+                + '</label>';
+        } else {
+            var val = s.value != null ? s.value : '';
+            var escaped = escHtml(String(val));
+            if (String(val).length > 80) {
+                inputHtml = '<label>' + escHtml(s.name)
+                    + '<textarea name="' + escAttr(s.key) + '" rows="6" style="font-family:monospace;font-size:0.85rem;">' + escaped + '</textarea>'
                     + '</label>';
             } else {
-                var val = s.value != null ? s.value : '';
-                var escaped = String(val).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-                if (String(val).length > 80) {
-                    inputHtml = '<label>' + s.name
-                        + '<textarea name="' + s.key + '" rows="6" style="font-family:monospace;font-size:0.85rem;">' + escaped.replace(/&quot;/g, '"') + '</textarea>'
-                        + '</label>';
-                } else {
-                    inputHtml = '<label>' + s.name
-                        + '<input type="text" name="' + s.key + '" value="' + escaped + '">'
-                        + '</label>';
-                }
+                inputHtml = '<label>' + escHtml(s.name)
+                    + '<input type="text" name="' + escAttr(s.key) + '" value="' + escaped + '">'
+                    + '</label>';
             }
-            html += '<div style="margin-bottom:0.5rem;">'
-                + inputHtml
-                + '<small style="color:var(--pico-muted-color);">' + (s.description || '') + '</small>'
-                + '</div>';
-        });
-        html += '<div style="display:flex;gap:0.8rem;align-items:center;">'
-            + '<button type="submit" style="margin:0;">Save</button>'
-            + '<span class="svc-save-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>'
-            + '</div></form>';
-        container.innerHTML = html;
+        }
+        html += '<div style="margin-bottom:0.5rem;">'
+            + inputHtml
+            + '<small style="color:var(--pico-muted-color);">' + escHtml(s.description || '') + '</small>'
+            + '</div>';
+    });
+    html += '<div style="display:flex;gap:0.8rem;align-items:center;">'
+        + '<button type="submit" style="margin:0;">Save</button>'
+        + '<span class="svc-save-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>'
+        + '</div></form>';
+    container.innerHTML = html;
 
-        // Handle save
-        container.querySelector('form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            var form = e.target;
-            var statusEl = form.querySelector('.svc-save-status');
-            var payload = {};
-            settings.forEach(function(s) {
-                var input = form.querySelector('[name="' + s.key + '"]');
-                if (!input) return;
-                if (s.type === 'bool') {
-                    payload[s.key] = input.checked;
-                } else if (s.type === 'float') {
-                    payload[s.key] = parseFloat(input.value);
-                } else if (s.type === 'int') {
-                    payload[s.key] = parseInt(input.value, 10);
-                } else {
-                    payload[s.key] = input.value;
-                }
-            });
-            statusEl.textContent = 'Saving…';
-            statusEl.style.color = 'var(--pico-muted-color)';
-            try {
-                var r = await fetch('/api/services/' + svc + '/settings', {
-                    method: 'PATCH',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({settings: payload})
-                });
-                var result = await r.json();
-                if (result.error) {
-                    statusEl.textContent = result.error;
-                    statusEl.style.color = 'var(--pico-del-color)';
-                } else {
-                    statusEl.textContent = 'Saved ✓';
-                    statusEl.style.color = 'var(--pico-ins-color)';
-                }
-            } catch (err) {
-                statusEl.textContent = 'Save failed';
-                statusEl.style.color = 'var(--pico-del-color)';
+    // Handle save
+    container.querySelector('form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        var form = e.target;
+        var statusEl = form.querySelector('.svc-save-status');
+        var payload = {};
+        settings.forEach(function(s) {
+            var input = form.querySelector('[name="' + s.key + '"]');
+            if (!input) return;
+            if (s.type === 'bool') {
+                payload[s.key] = input.checked;
+            } else if (s.type === 'float') {
+                payload[s.key] = parseFloat(input.value);
+            } else if (s.type === 'int') {
+                payload[s.key] = parseInt(input.value, 10);
+            } else {
+                payload[s.key] = input.value;
             }
-            setTimeout(function() { statusEl.textContent = ''; }, 4000);
         });
-    }
-})();
+        statusEl.textContent = 'Saving…';
+        statusEl.style.color = 'var(--pico-muted-color)';
+        try {
+            var r = await fetch('/api/services/' + encodeURIComponent(svc) + '/settings', {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({settings: payload})
+            });
+            var result = await r.json();
+            if (result.error) {
+                statusEl.textContent = result.error;
+                statusEl.style.color = 'var(--pico-del-color)';
+            } else {
+                statusEl.textContent = 'Saved ✓';
+                statusEl.style.color = 'var(--pico-ins-color)';
+            }
+        } catch (err) {
+            statusEl.textContent = 'Save failed';
+            statusEl.style.color = 'var(--pico-del-color)';
+        }
+        setTimeout(function() { statusEl.textContent = ''; }, 4000);
+    });
+}
 </script>
 
 <!-- Change Password -->

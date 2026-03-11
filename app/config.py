@@ -95,6 +95,8 @@ _DEFAULTS: dict[str, Any] = {
     # Remote save
     "REMOTE_SAVE_ENABLED": True,
     "REMOTE_SAVE_ENDPOINT": "http://remote-save:7000",
+    # Pipeline
+    "PIPELINE_CONFIG_PATH": str(_LOCAL_DATA_DIR / "pipeline.json"),
     # Data collection
     "DATA_COLLECT_ENABLED": False,
     "DATA_COLLECT_LABEL": "",

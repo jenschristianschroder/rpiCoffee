@@ -18,7 +18,9 @@ from fastapi.templating import Jinja2Templates
 
 from config import config
 from admin.router import router as admin_router
+from api.registry_routes import router as registry_router
 from pipeline import run_pipeline, run_pipeline_streaming
+from registry import registry
 from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
 from services.ollama_client import OllamaClient
@@ -287,6 +289,13 @@ async def lifespan(app: FastAPI):
         endpoint = cfg.get(f"{svc}_ENDPOINT", "n/a")
         logger.info("  %s: %s (%s)", svc, "enabled" if enabled else "disabled", endpoint)
 
+    # Load service registry / pipeline config
+    registry.load()
+    logger.info("  Registry: %d services, %d pipeline steps",
+                len(registry.list_all()), len(registry.get_pipeline()))
+    # Fetch manifests for any services that don't have one yet
+    await registry.refresh_all_manifests()
+
     # Sensor mode
     sensor_mode = cfg.get("SENSOR_MODE", "mock")
     logger.info("  SENSOR: mode=%s", sensor_mode)
@@ -315,6 +324,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "admin" / "tem
 
 # Routers
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
+app.include_router(registry_router)
 
 # Serve generated audio files
 app.mount("/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
@@ -447,9 +457,10 @@ async def sensor_live_stream():
 
 @app.get("/api/services/status")
 async def services_status():
-    """Check health of all backend services."""
+    """Check health of all backend services (legacy + dynamic registry)."""
     statuses: dict[str, dict] = {}
 
+    # Legacy hardcoded services (backward compat)
     if config.CLASSIFIER_ENABLED:
         statuses["classifier"] = await ClassifierClient.health()
     else:
@@ -482,6 +493,19 @@ async def services_status():
         statuses["sensor"] = {"enabled": True, "healthy": True, "mode": "mock"}
     else:
         statuses["sensor"] = {"enabled": True, "healthy": True, "mode": "serial"}
+
+    # Merge registry health for dynamic services (don't overwrite legacy entries)
+    try:
+        reg_health = await registry.health_check_all()
+        for name, info in reg_health.items():
+            svc_id = name.replace("-", "_")
+            if svc_id not in statuses:
+                statuses[svc_id] = {
+                    "enabled": True,
+                    "healthy": info.get("status") == "healthy",
+                }
+    except Exception:
+        logger.debug("Registry health check failed during services_status", exc_info=True)
 
     return statuses
 

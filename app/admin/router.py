@@ -23,6 +23,8 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 # Keys that can be edited from the admin UI
+# NOTE: Service endpoint/enabled keys are kept for backward compatibility
+# but are now primarily managed through the service registry.
 _EDITABLE_KEYS = [
     "LLM_ENABLED", "LLM_ENDPOINT", "LLM_OLLAMA_ENDPOINT",
     "TTS_ENABLED", "TTS_ENDPOINT",
@@ -115,6 +117,19 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
         "bool_keys": _BOOL_KEYS,
         "descriptions": _DESCRIPTIONS,
         "message": request.query_params.get("message", ""),
+    })
+
+
+# ── Pipeline Editor ──────────────────────────────────────────────
+
+@router.get("/pipeline", response_class=HTMLResponse)
+async def pipeline_editor(request: Request, session: str | None = Cookie(default=None)):
+    if not _verify_session_fresh(session):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    return templates.TemplateResponse("pipeline_editor.html", {
+        "request": request,
+        "config": config.to_dict(),
     })
 
 

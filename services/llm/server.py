@@ -191,7 +191,9 @@ def build_prompt(user_msg: str, system: str | None = None) -> str:
 # ── Request / Response models ────────────────────────────────────
 
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=1)
+    prompt: str | None = Field(None, min_length=1)
+    coffee_label: str | None = Field(None, description="Coffee type label — builds prompt automatically")
+    timestamp: str | None = Field(None, description="ISO-8601 timestamp — used with coffee_label")
     system: str | None = None
     max_tokens: int | None = None
     temperature: float | None = None
@@ -229,6 +231,32 @@ app = FastAPI(title="rpicoffee-llm", version="2.0.0", lifespan=lifespan)
 
 # ── Endpoints ────────────────────────────────────────────────────
 
+@app.get("/manifest")
+async def manifest():
+    return {
+        "name": "llm",
+        "version": "2.0.0",
+        "description": "Coffee comment generator using fine-tuned Qwen2.5-0.5B (llama-cpp)",
+        "inputs": [
+            {"name": "coffee_label", "type": "string", "required": True, "description": "Coffee type label from classifier"},
+            {"name": "timestamp", "type": "string", "required": True, "description": "ISO-8601 timestamp of brew"},
+        ],
+        "outputs": [
+            {"name": "response", "type": "string", "description": "Generated witty comment"},
+            {"name": "tokens", "type": "int", "description": "Number of tokens generated"},
+            {"name": "elapsed_s", "type": "float", "description": "Generation time in seconds"},
+            {"name": "tokens_per_s", "type": "float", "description": "Tokens per second"},
+        ],
+        "endpoints": {
+            "execute": {"method": "POST", "path": "/generate"},
+            "health": {"method": "GET", "path": "/health"},
+            "settings": {"method": "GET", "path": "/settings"},
+            "update_settings": {"method": "PATCH", "path": "/settings"},
+        },
+        "failure_modes": ["skip", "halt"],
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -236,8 +264,14 @@ async def health():
 
 @app.post("/generate")
 async def generate(req: GenerateRequest):
-    if not req.prompt:
-        raise HTTPException(status_code=400, detail="prompt is required")
+    # Accept either a raw prompt or structured coffee_label + timestamp
+    user_msg = req.prompt
+    if not user_msg:
+        if req.coffee_label:
+            ts = req.timestamp or datetime.now().astimezone().isoformat()
+            user_msg = f"Write a statement about {req.coffee_label.title()} at {ts}"
+        else:
+            raise HTTPException(status_code=400, detail="prompt or coffee_label is required")
 
     # Resolve from runtime defaults when request omits a value
     max_tokens = req.max_tokens if req.max_tokens is not None else _runtime["LLM_MAX_TOKENS"]
@@ -246,8 +280,8 @@ async def generate(req: GenerateRequest):
     tts = req.tts if req.tts is not None else _runtime["LLM_TTS"]
     system = req.system if req.system is not None else _runtime["LLM_SYSTEM_MESSAGE"]
 
-    day_name, time_24h, _ = parse_timestamp(req.prompt)
-    prompt = build_prompt(req.prompt, system=system)
+    day_name, time_24h, _ = parse_timestamp(user_msg)
+    prompt = build_prompt(user_msg, system=system)
     model.reset()
     t0 = time.perf_counter()
     result = model(
