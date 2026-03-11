@@ -7,10 +7,8 @@ Uses scikit-learn RandomForestClassifier with StandardScaler in a Pipeline.
 
 from __future__ import annotations
 
-import glob
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -18,13 +16,12 @@ from typing import Any
 
 import joblib
 import numpy as np
+from features import extract_features, extract_features_from_csv, get_feature_names
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-
-from features import extract_features, extract_features_from_csv, get_feature_names
 
 logger = logging.getLogger("classifier.model_manager")
 
@@ -199,7 +196,10 @@ class ModelManager:
             # Need at least 2 classes for a meaningful classifier
             if len(class_counts) < 2:
                 self.training_status.is_training = False
-                self.training_status.error = f"Need at least 2 coffee types to train a classifier. Found {len(class_counts)}: {list(class_counts.keys())}. Record training data for another coffee type and try again."
+                self.training_status.error = (
+                    f"Need at least 2 coffee types to train a classifier. Found {len(class_counts)}: "
+                    f"{list(class_counts.keys())}. Record training data for another coffee type and try again."
+                )
                 self.training_status.progress = "Failed"
                 return {"error": self.training_status.error, "status": "failed"}
 

@@ -11,10 +11,8 @@ import json
 import subprocess
 import sys
 import time
-import urllib.request
 import urllib.error
-import signal
-import os
+import urllib.request
 
 PROMPTS = [
     "Write a statement about Cappuccino at 2026-02-17T07:06:00+02:00",

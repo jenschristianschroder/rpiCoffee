@@ -6,8 +6,8 @@ using the piper-tts library with ONNX runtime inference.
 """
 
 import io
-import wave
 import logging
+import wave
 from pathlib import Path
 from typing import Optional
 

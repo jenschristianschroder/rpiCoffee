@@ -144,8 +144,10 @@ class PicoQuakeReader:
         if self._process.poll() is not None:
             out = self._process.stdout.read().decode(errors="replace") if self._process.stdout else ""
             # Extract the last meaningful error line
-            err_lines = [l for l in out.strip().splitlines() if "ERROR" in l or "not found" in l.lower()]
-            self._last_error = err_lines[-1].strip() if err_lines else f"Process exited with code {self._process.returncode}"
+            err_lines = [line for line in out.strip().splitlines() if "ERROR" in line or "not found" in line.lower()]
+            self._last_error = (
+                err_lines[-1].strip() if err_lines else f"Process exited with code {self._process.returncode}"
+            )
             logger.error("Acquisition process exited early (code %d): %s",
                          self._process.returncode, out[-500:])
         else:
