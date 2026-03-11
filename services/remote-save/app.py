@@ -141,8 +141,15 @@ _DEFAULTS: dict[str, str] = {
 
 
 def _get_setting(key: str) -> str:
-    """Return the runtime value for *key*, falling back to _DEFAULTS then ''."""
-    return _runtime.get(key) or _DEFAULTS.get(key, "")
+    """Return the runtime value for *key*, falling back to _DEFAULTS then ''.
+
+    This treats the presence of a key in _runtime as authoritative, even if the
+    value is an empty string, avoiding unintended fallback to defaults for
+    falsy values explicitly set via PATCH /settings.
+    """
+    if key in _runtime:
+        return str(_runtime[key])
+    return _DEFAULTS.get(key, "")
 
 
 def _load_settings() -> None:
@@ -492,12 +499,16 @@ def get_settings():
     for entry in _SETTINGS_REGISTRY:
         key = entry["key"]
         raw = _runtime.get(key, "")
-        if entry.get("secret"):
+        if key in _SECRET_KEYS:
             value = "***set***" if raw else ""
         else:
             value = raw
         result.append({**entry, "value": value})
     return result
+
+
+# Keys accepted by PATCH /settings (all registered keys).
+_VALID_SETTING_KEYS: set[str] = {e["key"] for e in _SETTINGS_REGISTRY}
 
 
 @app.patch("/settings")
@@ -513,10 +524,9 @@ def update_settings(req: SettingsUpdate):
     Unknown keys are silently ignored.  Changes are persisted to settings.json
     inside the container's /data volume so they survive container restarts.
     """
-    valid_keys = {e["key"] for e in _SETTINGS_REGISTRY}
     updated = []
     for key, value in req.settings.items():
-        if key not in valid_keys:
+        if key not in _VALID_SETTING_KEYS:
             continue
         _runtime[key] = str(value)
         updated.append(key)

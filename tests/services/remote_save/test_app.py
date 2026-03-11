@@ -53,7 +53,10 @@ async def client(tmp_path):
         "DATAVERSE_CLIENT_SECRET": "secret",
     }):
         svc = _import_svc_app()
-        # Reload runtime settings from the patched environment
+        # Recompute SETTINGS_PATH so persisted-settings logic points at this
+        # test's isolated tmp_path, not the path captured at first module load.
+        svc.SETTINGS_PATH = tmp_path / "settings.json"
+        # Reload runtime settings from the patched environment and fresh path.
         svc._load_settings()
         transport = ASGITransport(app=svc.app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:

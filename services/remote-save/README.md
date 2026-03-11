@@ -267,7 +267,9 @@ This allows operators to confirm that credentials are loaded without exposing th
 
 Update one or more runtime settings. All keys listed in the settings registry are accepted, including sensitive (secret) ones. Unknown keys are silently ignored. Changes are persisted to `settings.json` inside the container's `/data` volume so they survive container restarts.
 
-**Sensitive values** (`DATAVERSE_TENANT_ID`, `DATAVERSE_CLIENT_ID`, `DATAVERSE_CLIENT_SECRET`) can be set via this endpoint but are **never** returned in `GET /settings` responses — only the masked placeholder (`"***set***"`) is shown. This enables switching Dataverse environments or Azure app registrations without code changes or container restarts.
+> **Security warning:** This endpoint is a privileged management surface. It **MUST** be protected with strong authentication/authorization (for example, an admin-only API key, mTLS, or a properly configured reverse proxy) and **MUST NOT** be exposed to untrusted networks or other pods/services without equivalent protection. In production you should either restrict access to a trusted admin network or disable this endpoint entirely.
+
+**Sensitive values** (`DATAVERSE_TENANT_ID`, `DATAVERSE_CLIENT_ID`, `DATAVERSE_CLIENT_SECRET`) can be set via this endpoint but are **never** returned in `GET /settings` responses — only the masked placeholder (`"***set***"`) is shown. This enables switching Dataverse environments or Azure app registrations without code changes or container restarts, but write access to this endpoint still allows an attacker to redirect pipeline data and tokens if it is not adequately protected.
 
 #### Example — update a non-sensitive setting
 
