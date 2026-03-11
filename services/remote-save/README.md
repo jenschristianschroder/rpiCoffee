@@ -314,7 +314,82 @@ curl -X PATCH http://localhost:7000/settings \
 }
 ```
 
-## Interactive API Docs
+## Settings Persistence
+
+All settings managed via the `/settings` endpoint are persisted to a JSON file inside the container's `/data` volume so they survive container restarts and redeployments.
+
+### Where settings are stored
+
+| Location | Description |
+|---|---|
+| `/data/settings.json` | Default path inside the container (controlled by `SETTINGS_DIR`) |
+| `remote-save-data` Docker volume | Named Docker volume mounted at `/data` by `docker-compose.yml` |
+
+The path is controlled by the `SETTINGS_DIR` environment variable (defaults to `/data`).
+
+### Load priority (highest wins)
+
+1. **Persisted `settings.json`** — values written by `PATCH /settings`
+2. **Environment variables** — values supplied at container start (`.env` file or `-e` flags)
+3. **Hardcoded defaults** — column name fallbacks defined in the service source
+
+Settings from `settings.json` always take priority over environment variables, so a `PATCH /settings` call permanently overrides the original environment configuration until the file is deleted.
+
+### Atomic writes
+
+`PATCH /settings` writes the JSON file atomically: it first writes to a sibling temporary file, then uses `os.replace()` to swap it into place. This guarantees that readers always see either the old complete file or the new complete file — never a partially written one.
+
+### Mounting a persistent volume
+
+**Docker Compose (recommended)** — the `remote-save` service in `docker-compose.yml` already mounts a named volume:
+
+```yaml
+volumes:
+  - remote-save-data:/data
+environment:
+  - SETTINGS_DIR=/data
+```
+
+**Standalone `docker run`** — mount a host directory or named volume:
+
+```bash
+# named volume (survives container recreation)
+docker run -p 7000:7000 \
+  -v remote-save-data:/data \
+  -e SETTINGS_DIR=/data \
+  --env-file .env \
+  dataverse-saver
+
+# host directory (useful for inspection/backup)
+docker run -p 7000:7000 \
+  -v /opt/rpicoffee/remote-save:/data \
+  -e SETTINGS_DIR=/data \
+  --env-file .env \
+  dataverse-saver
+```
+
+### Sensitive values in storage
+
+Secret keys (`DATAVERSE_TENANT_ID`, `DATAVERSE_CLIENT_ID`, `DATAVERSE_CLIENT_SECRET`) are stored in `settings.json` as plain text so the service can authenticate to Azure AD after a restart without requiring the original environment variables. Protect the volume accordingly:
+
+- Restrict read access to the volume to the service account running the container.
+- Do not bind-mount the `/data` directory to a world-readable host path.
+- Rotate credentials via `PATCH /settings` rather than embedding them in container images or CI pipelines.
+
+### Recovery from a corrupt settings file
+
+If `settings.json` is unreadable or contains invalid JSON, the service silently ignores it and falls back to environment variables. Delete or repair the file manually to restore expected behavior:
+
+```bash
+# Inside the container
+docker exec rpicoffee-remote-save rm /data/settings.json
+# Then restart to reload from environment variables
+docker restart rpicoffee-remote-save
+```
+
+---
+
+
 
 When the service is running, auto-generated Swagger UI is available at:
 

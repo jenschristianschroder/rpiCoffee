@@ -240,6 +240,72 @@ class TestSettings:
         settings_by_key = {e["key"]: e for e in get_resp.json()}
         assert settings_by_key["DATAVERSE_COL_NAME"]["value"] == "custom_name_col"
 
+    @pytest.mark.asyncio
+    async def test_settings_persist_across_restart(self, client, tmp_path):
+        """Settings written via PATCH must survive a simulated container restart.
+
+        This test verifies the full persistence round-trip:
+        1. Update a setting via PATCH — triggers atomic write to settings.json.
+        2. Reset the in-memory runtime dict (simulating a fresh container start).
+        3. Reload settings from disk via _load_settings().
+        4. Confirm the previously persisted value is restored.
+        """
+        svc = _import_svc_app()
+        svc.SETTINGS_PATH = tmp_path / "settings.json"
+
+        # Step 1 — persist a new value
+        patch_resp = await client.patch("/settings", json={"settings": {
+            "DATAVERSE_TABLE": "persisted_table",
+            "DATAVERSE_ENV_URL": "https://persist.crm.dynamics.com",
+        }})
+        assert patch_resp.status_code == 200
+        assert svc.SETTINGS_PATH.exists(), "settings.json must be written by PATCH"
+
+        # Step 2 — wipe the in-memory state (simulate container restart)
+        original_runtime = dict(svc._runtime)
+        svc._runtime.clear()
+
+        # Step 3 — reload from disk
+        svc._load_settings()
+
+        # Step 4 — confirm persisted values were restored
+        assert svc._runtime["DATAVERSE_TABLE"] == "persisted_table"
+        assert svc._runtime["DATAVERSE_ENV_URL"] == "https://persist.crm.dynamics.com"
+
+        # Restore runtime so other tests are unaffected
+        svc._runtime.update(original_runtime)
+
+    @pytest.mark.asyncio
+    async def test_settings_json_is_written_atomically(self, client, tmp_path):
+        """PATCH /settings must write settings.json atomically (no leftover .tmp files)."""
+        svc = _import_svc_app()
+        svc.SETTINGS_PATH = tmp_path / "settings.json"
+
+        resp = await client.patch("/settings", json={"settings": {
+            "DATAVERSE_TABLE": "atomic_table",
+        }})
+        assert resp.status_code == 200
+
+        # The final file must exist
+        assert svc.SETTINGS_PATH.exists()
+        # No leftover temp files should remain
+        tmp_files = list(tmp_path.glob("*.tmp"))
+        assert tmp_files == [], f"Leftover temp files found: {tmp_files}"
+
+    @pytest.mark.asyncio
+    async def test_corrupt_settings_json_is_ignored_on_load(self, tmp_path):
+        """A corrupt settings.json must not crash the service; env vars still load."""
+        (tmp_path / "settings.json").write_text("{invalid json}")
+        svc = _import_svc_app()
+        svc.SETTINGS_PATH = tmp_path / "settings.json"
+        with patch.dict("os.environ", {
+            "DATAVERSE_TABLE": "from_env",
+            "SETTINGS_DIR": str(tmp_path),
+        }):
+            svc._load_settings()
+        # Environment variable value must still be present despite corrupt JSON
+        assert svc._runtime.get("DATAVERSE_TABLE") == "from_env"
+
 
 class TestSave:
     @pytest.mark.asyncio
