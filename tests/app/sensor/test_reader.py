@@ -69,7 +69,7 @@ class TestReadSensor:
         mock_cfg.SENSOR_ACC_ENABLED = True
         mock_cfg.SENSOR_GYRO_ENABLED = True
         expected = [_sample_row()]
-        with patch("sensor.reader._read_from_mock_buffer", new_callable=AsyncMock, return_value=expected) as m:
+        with patch("sensor.reader._read_from_mock_buffer", new_callable=AsyncMock, return_value=expected):
             result = await read_sensor(port=None)
         assert result == expected
 

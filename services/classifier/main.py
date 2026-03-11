@@ -45,9 +45,18 @@ SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
 _runtime: dict[str, Any] = {}
 
 _SETTINGS_REGISTRY: list[dict[str, str]] = [
-    {"key": "CONFIDENCE_THRESHOLD", "name": "Confidence Threshold", "description": "Minimum confidence score to accept a classification result", "type": "float"},
-    {"key": "MODEL_DIR", "name": "Model Directory", "description": "Path where trained model files are stored", "type": "str"},
-    {"key": "TRAINING_DIR", "name": "Training Directory", "description": "Path to the directory containing labelled training CSVs", "type": "str"},
+    {
+        "key": "CONFIDENCE_THRESHOLD", "name": "Confidence Threshold",
+        "description": "Minimum confidence score to accept a classification result", "type": "float",
+    },
+    {
+        "key": "MODEL_DIR", "name": "Model Directory",
+        "description": "Path where trained model files are stored", "type": "str",
+    },
+    {
+        "key": "TRAINING_DIR", "name": "Training Directory",
+        "description": "Path to the directory containing labelled training CSVs", "type": "str",
+    },
 ]
 
 

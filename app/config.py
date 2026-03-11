@@ -136,10 +136,10 @@ _DESCRIPTIONS: dict[str, str] = {
     "SENSOR_AUTO_TRIGGER": "Automatically start a brew when vibration exceeds the threshold",
     # Trigger source configuration
     "SENSOR_TRIGGER_SOURCES": "Which signal triggers auto-capture: 'accel', 'gyro', or 'both'",
-    "SENSOR_TRIGGER_COMBINE_MODE": "When both sources active: 'or' = either triggers, 'and' = both must exceed thresholds",
+    "SENSOR_TRIGGER_COMBINE_MODE": "When both sources active: 'or' = either triggers, 'and' = both must exceed thresholds",  # noqa: E501
     "SENSOR_GYRO_THRESHOLD": "Gyro RMS threshold (dps) for auto-trigger when using gyroscope source",
     "SENSOR_GYRO_RMS_WINDOW_S": "Sliding window length in seconds used to compute the gyro RMS value",
-    "SENSOR_WARMUP_S": "Seconds to wait after sensor start before allowing auto-trigger (avoids false triggers on boot)",
+    "SENSOR_WARMUP_S": "Seconds to wait after sensor start before allowing auto-trigger (avoids false triggers on boot)",  # noqa: E501
     "SENSOR_COOLDOWN_S": "Seconds to wait after a capture completes before allowing a new auto-trigger",
     # Classifier
     "CLASSIFIER_ENABLED": "Enable the ML classifier service for coffee-type detection",
@@ -168,7 +168,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "DATA_COLLECT_LABEL": "Coffee type label to assign to collected data (e.g. black, espresso, cappuccino)",
     "DATA_COLLECT_LABELS": "Comma-separated list of available coffee type labels for data collection",
     # UI
-    "VIRTUAL_KEYBOARD_ENABLED": "Show an on-screen virtual keyboard when input fields are focused (for touchscreen kiosk use)",
+    "VIRTUAL_KEYBOARD_ENABLED": "Show an on-screen virtual keyboard when input fields are focused (for touchscreen kiosk use)",  # noqa: E501
 }
 
 SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", str(_LOCAL_DATA_DIR))) / "settings.json"

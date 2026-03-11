@@ -87,7 +87,9 @@ async def login_submit(request: Request, password: str = Form(...)):
         logger.info("Admin login successful")
         return response
     logger.warning("Admin login failed – wrong password")
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid password", "config": config.to_dict()})
+    return templates.TemplateResponse(
+        "login.html", {"request": request, "error": "Invalid password", "config": config.to_dict()}
+    )
 
 
 @router.get("/logout")

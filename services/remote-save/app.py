@@ -56,9 +56,18 @@ app = FastAPI(
 _runtime: dict[str, Any] = {}
 
 _SETTINGS_REGISTRY: list[dict[str, str]] = [
-    {"key": "DATAVERSE_ENV_URL", "name": "Dataverse Environment URL", "description": "Base URL of the Dataverse environment", "type": "str"},
-    {"key": "DATAVERSE_TABLE", "name": "Dataverse Table", "description": "Logical name of the Dataverse table to write records to", "type": "str"},
-    {"key": "DATAVERSE_COLUMN", "name": "Dataverse File Column", "description": "Logical name of the file column for CSV uploads", "type": "str"},
+    {
+        "key": "DATAVERSE_ENV_URL", "name": "Dataverse Environment URL",
+        "description": "Base URL of the Dataverse environment", "type": "str",
+    },
+    {
+        "key": "DATAVERSE_TABLE", "name": "Dataverse Table",
+        "description": "Logical name of the Dataverse table to write records to", "type": "str",
+    },
+    {
+        "key": "DATAVERSE_COLUMN", "name": "Dataverse File Column",
+        "description": "Logical name of the file column for CSV uploads", "type": "str",
+    },
 ]
 
 
@@ -228,7 +237,8 @@ def manifest() -> dict:
             {"name": "coffee_type", "type": "string", "required": True, "description": "Coffee type label"},
             {"name": "confidence", "type": "float", "required": True, "description": "Classification confidence"},
             {"name": "text", "type": "string", "required": False, "description": "Generated comment text"},
-            {"name": "sensor_data", "type": "array", "required": False, "description": "Raw sensor data for CSV upload"},
+            {"name": "sensor_data", "type": "array", "required": False,
+             "description": "Raw sensor data for CSV upload"},
         ],
         "outputs": [
             {"name": "record_id", "type": "string", "description": "Dataverse record ID"},

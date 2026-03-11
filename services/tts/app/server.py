@@ -39,8 +39,14 @@ engine: Optional[TTSEngine] = None
 _runtime: dict[str, Any] = {}
 
 _SETTINGS_REGISTRY: list[dict[str, str]] = [
-    {"key": "MODELS_DIR", "name": "Models Directory", "description": "Path to the directory containing Piper voice models", "type": "str"},
-    {"key": "DEFAULT_SPEED", "name": "Default Speed", "description": "Default speech speed multiplier (1.0 = normal)", "type": "float"},
+    {
+        "key": "MODELS_DIR", "name": "Models Directory",
+        "description": "Path to the directory containing Piper voice models", "type": "str",
+    },
+    {
+        "key": "DEFAULT_SPEED", "name": "Default Speed",
+        "description": "Default speech speed multiplier (1.0 = normal)", "type": "float",
+    },
 ]
 
 
@@ -110,7 +116,8 @@ async def manifest():
         "description": "Offline speech synthesis using Piper TTS",
         "inputs": [
             {"name": "text", "type": "string", "required": True, "description": "Text to synthesize"},
-            {"name": "speed", "type": "float", "required": False, "description": "Speech speed multiplier (default 1.0)"},
+            {"name": "speed", "type": "float", "required": False,
+             "description": "Speech speed multiplier (default 1.0)"},
         ],
         "outputs": [
             {"name": "audio", "type": "binary", "description": "Synthesized WAV audio bytes"},

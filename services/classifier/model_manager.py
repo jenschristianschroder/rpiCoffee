@@ -196,7 +196,10 @@ class ModelManager:
             # Need at least 2 classes for a meaningful classifier
             if len(class_counts) < 2:
                 self.training_status.is_training = False
-                self.training_status.error = f"Need at least 2 coffee types to train a classifier. Found {len(class_counts)}: {list(class_counts.keys())}. Record training data for another coffee type and try again."
+                self.training_status.error = (
+                    f"Need at least 2 coffee types to train a classifier. Found {len(class_counts)}: "
+                    f"{list(class_counts.keys())}. Record training data for another coffee type and try again."
+                )
                 self.training_status.progress = "Failed"
                 return {"error": self.training_status.error, "status": "failed"}
 

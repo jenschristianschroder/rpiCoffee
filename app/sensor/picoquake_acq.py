@@ -326,11 +326,13 @@ def main_acquisition():
             acc_range=_ACC_RANGE_MAP[args.acc_range],
             gyro_range=_GYRO_RANGE_MAP[args.gyro_range],
         )
-        logger.info("Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds | warmup=%ds | cooldown=%ds",
-                    args.rate, args.acc_range, args.gyro_range, args.filter_hz,
-                    args.threshold, args.gyro_threshold,
-                    args.trigger_sources, args.trigger_combine_mode, args.duration,
-                    args.warmup, args.cooldown)
+        logger.info(
+            "Device configured: %d Hz | acc_range=%dg | gyro_range=%d dps | filter=%d Hz"
+            " | accel_thr=%.3fg | gyro_thr=%.1fdps | trigger=%s(%s) | duration=%ds | warmup=%ds | cooldown=%ds",
+            args.rate, args.acc_range, args.gyro_range, args.filter_hz,
+            args.threshold, args.gyro_threshold,
+            args.trigger_sources, args.trigger_combine_mode, args.duration,
+            args.warmup, args.cooldown)
         return dev
 
     # ── Initial connection ────────────────────────────────────────
@@ -493,9 +495,11 @@ def main_acquisition():
                     _ng = max(1, len(recent_gyro))
                     _mean_g = sum(recent_gyro) / _ng if recent_gyro else 0
                     gyro_rms_log = (sum((g - _mean_g) ** 2 for g in recent_gyro) / _ng) ** 0.5 if recent_gyro else 0
-                    logger.info("samples=%d  rate=%.1f Hz  drops=%d  accel_rms=%.3fg  gyro_rms=%.1fdps  trigger=%s  recording=%d",
-                                ring.sample_counter, actual_rate, ring.drop_counter,
-                                accel_rms_log, gyro_rms_log, args.trigger_sources, flag)
+                    logger.info(
+                        "samples=%d  rate=%.1f Hz  drops=%d  accel_rms=%.3fg"
+                        "  gyro_rms=%.1fdps  trigger=%s  recording=%d",
+                        ring.sample_counter, actual_rate, ring.drop_counter,
+                        accel_rms_log, gyro_rms_log, args.trigger_sources, flag)
                     last_log = now
                     samples_since_log = 0
 
