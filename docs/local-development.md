@@ -204,3 +204,104 @@ Always code against the shared sensor interface, not concrete reader classes. Se
 - Update the relevant README (root or service-level) if behaviour or configuration changes
 - Test locally in `mock` sensor mode before submitting
 - For new pipeline stages or sensor modes, add a corresponding mock/stub so the feature works without hardware
+
+## Automated Testing
+
+The project uses **pytest** with **pytest-asyncio** for async tests, **respx** for mocking httpx calls, and **ruff** for linting.
+
+### Install dev dependencies
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Running tests
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run only the main app tests
+python -m pytest tests/app/
+
+# Run a specific test file
+python -m pytest tests/app/test_config.py
+
+# Run with verbose output
+python -m pytest tests/app/ -v
+```
+
+### Coverage
+
+```bash
+# Run app tests with coverage report
+python -m pytest tests/app/ --cov=app --cov-report=term-missing
+
+# Generate an HTML coverage report
+python -m pytest tests/app/ --cov=app --cov-report=html
+```
+
+Coverage thresholds and exclusions are configured in `pyproject.toml`. Hardware-dependent modules (`picoquake_acq.py`, `picoquake_reader.py`) are excluded from coverage since they require physical sensor hardware.
+
+### Linting
+
+```bash
+# Check for lint errors
+ruff check app/ services/ tests/
+
+# Auto-fix fixable issues
+ruff check --fix app/ services/ tests/
+```
+
+### Test structure
+
+```
+tests/
+├── conftest.py                     # Root fixtures (sample data, paths, manifest)
+├── app/
+│   ├── conftest.py                 # App fixtures (mock config, FastAPI test client)
+│   ├── test_config.py              # ConfigManager
+│   ├── test_main.py                # Main API routes
+│   ├── test_admin_router.py        # Admin panel routes
+│   ├── test_models.py              # Pydantic models
+│   ├── test_registry.py            # Service registry
+│   ├── test_registry_routes.py     # Registry API routes
+│   ├── test_pipeline.py            # Pipeline orchestrator
+│   ├── test_pipeline_engine.py     # Pipeline engine + context
+│   ├── test_pipeline_executor.py   # Service call executor
+│   ├── sensor/
+│   │   ├── test_mock_sensor.py     # Mock sensor (CSV replay)
+│   │   └── test_reader.py          # Sensor reader + channel filter
+│   └── services/
+│       ├── test_classifier_client.py
+│       ├── test_llm_client.py
+│       ├── test_ollama_client.py
+│       ├── test_tts_client.py
+│       ├── test_remote_save_client.py
+│       ├── test_training_data.py
+│       └── test_hailo_ollama_manager.py
+└── services/
+    ├── classifier/                 # Classifier service tests
+    ├── llm_ollama/                 # LLM-Ollama proxy tests
+    └── remote_save/                # Remote save / Dataverse tests
+```
+
+### CI
+
+GitHub Actions runs linting and tests automatically on every push and pull request. The workflow is defined in `.github/workflows/ci.yml` with separate jobs for:
+
+- **lint** — ruff check across all Python code
+- **test-app** — pytest on `tests/app/` with coverage enforcement
+- **test-classifier** — pytest on `tests/services/classifier/`
+- **test-llm-ollama** — pytest on `tests/services/llm_ollama/`
+- **test-remote-save** — pytest on `tests/services/remote_save/`
+
+### Writing new tests
+
+When adding tests for a new module:
+
+1. Create the test file in the matching `tests/` subdirectory
+2. Use `pytest.mark.asyncio` for async test functions
+3. Mock external dependencies (HTTP calls, config, file system) — don't make real network calls
+4. For service client tests, use `respx` to mock httpx requests
+5. For backend service tests (under `tests/services/`), use `importlib.util.spec_from_file_location` to load modules with unique names to avoid `sys.modules` collisions
