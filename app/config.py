@@ -147,7 +147,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",
     # LLM
     "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
-    "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+, or 'mock' for local dev without a real LLM",
+    "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+, or 'mock' for local dev",
     "LLM_TIMEOUT": "HTTP timeout in seconds for LLM generate requests (increase for slow hardware)",
     "LLM_ENDPOINT": "URL of the llama-cpp LLM service (default: port 8002)",
     "LLM_OLLAMA_SERVICE_ENDPOINT": "URL of the llm-ollama proxy service (default: port 8003)",
