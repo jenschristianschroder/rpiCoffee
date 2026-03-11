@@ -12,7 +12,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TIMEOUT = 30.0
+_DEFAULT_TIMEOUT = 60.0
 
 
 class ServiceCallError(Exception):

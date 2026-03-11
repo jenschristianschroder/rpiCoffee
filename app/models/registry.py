@@ -31,6 +31,7 @@ class PipelineStep(BaseModel):
     )
     on_failure: str = Field("skip", description="Failure policy: skip, halt, or retry")
     retry_count: int = Field(1, ge=1, description="Number of retries when on_failure=retry")
+    timeout: float | None = Field(None, description="Per-step HTTP timeout in seconds (None = use executor default)")
     enabled: bool = Field(True, description="Whether this step is active in the pipeline")
 
 

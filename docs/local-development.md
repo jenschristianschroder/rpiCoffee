@@ -52,6 +52,8 @@ The app runs at **http://localhost:8080** with `SENSOR_MODE=mock` by default.
 
 If you don't want to use Docker at all, you can run each service in a separate terminal:
 
+> **Tip:** If the LLM service times out on your local machine (CPU-only inference can be slow), set `LLM_BACKEND=mock` to use canned responses instead. This lets you develop and test the full pipeline without waiting for real inference.
+
 **Terminal 1 — Classifier:**
 
 ```bash
@@ -85,6 +87,8 @@ The mock sensor mode is the default, so no `.env` file is strictly required for 
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `SENSOR_MODE` | `mock` | Replays CSV samples from `data/` |
+| `LLM_BACKEND` | `llama-cpp` | Set to `mock` to skip real LLM inference (returns canned responses) |
+| `LLM_TIMEOUT` | `120` | HTTP timeout in seconds for LLM generate requests (increase for slow hardware) |
 | `CLASSIFIER_ENDPOINT` | `http://classifier:8001` | Override to `http://localhost:8001` when running natively (done automatically by `run-app-local.bat`) |
 | `LLM_ENDPOINT` | `http://llm:8002` | Override to `http://localhost:8002` when running natively (done automatically by `run-app-local.bat`) |
 | `LLM_OLLAMA_SERVICE_ENDPOINT` | `http://llm-ollama:8003` | Override to `http://localhost:8003` when running natively |

@@ -21,6 +21,7 @@ from pipeline import run_pipeline, run_pipeline_streaming
 from registry import registry
 from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
+from services.llm_mock_client import MockLLMClient
 from services.ollama_client import OllamaClient
 from services.remote_save_client import RemoteSaveClient
 from services.tts_client import TTSClient
@@ -468,6 +469,8 @@ async def services_status():
     if config.LLM_ENABLED:
         if config.LLM_BACKEND == "ollama":
             statuses["llm"] = await OllamaClient.health()
+        elif config.LLM_BACKEND == "mock":
+            statuses["llm"] = await MockLLMClient.health()
         else:
             statuses["llm"] = await LLMClient.health()
     else:
@@ -514,6 +517,7 @@ async def services_status():
 _SERVICE_CLIENTS = {
     "classifier": ClassifierClient,
     "llm": LLMClient,
+    "llm-mock": MockLLMClient,
     "llm-ollama": OllamaClient,
     "tts": TTSClient,
     "remote-save": RemoteSaveClient,

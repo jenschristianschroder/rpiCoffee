@@ -14,7 +14,6 @@ import httpx
 from config import config
 
 logger = logging.getLogger("rpicoffee.ollama_client")
-_TIMEOUT = 30.0
 
 
 class OllamaClient:
@@ -55,7 +54,7 @@ class OllamaClient:
         prompt = f"Write a statement about {coffee_label.title()} at {timestamp.isoformat()}"
 
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=float(config.get("LLM_TIMEOUT"))) as client:
                 r = await client.post(
                     f"{config.LLM_OLLAMA_SERVICE_ENDPOINT}/generate",
                     json={"prompt": prompt},

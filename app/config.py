@@ -70,6 +70,7 @@ _DEFAULTS: dict[str, Any] = {
     "LLM_TEMPERATURE": 0.7,
     "LLM_TOP_P": 0.9,
     "LLM_TTS": True,
+    "LLM_TIMEOUT": 120,  # HTTP timeout in seconds for LLM generate requests
     "LLM_KEEP_ALIVE": -1,  # Ollama keep_alive: -1=forever, 0=unload, or seconds
     "LLM_SYSTEM_MESSAGE": (
         "You are a witty coffee commentator.\n\n"
@@ -113,8 +114,8 @@ _INT_KEYS = {"SENSOR_SAMPLE_RATE_HZ", "SENSOR_DURATION_S", "LLM_MAX_TOKENS",
              "SENSOR_ACC_RANGE_G", "SENSOR_GYRO_RANGE_DPS", "SENSOR_FILTER_HZ",
              "SENSOR_CHART_WINDOW_S", "LLM_KEEP_ALIVE", "SENSOR_WARMUP_S",
              "SENSOR_COOLDOWN_S"}
-_FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "SENSOR_VIBRATION_THRESHOLD", "SENSOR_RMS_WINDOW_S",
-               "SENSOR_GYRO_THRESHOLD", "SENSOR_GYRO_RMS_WINDOW_S"}
+_FLOAT_KEYS = {"LLM_TEMPERATURE", "LLM_TOP_P", "LLM_TIMEOUT", "SENSOR_VIBRATION_THRESHOLD",
+               "SENSOR_RMS_WINDOW_S", "SENSOR_GYRO_THRESHOLD", "SENSOR_GYRO_RMS_WINDOW_S"}
 
 # Human-readable descriptions displayed as help text in the admin dashboard
 _DESCRIPTIONS: dict[str, str] = {
@@ -146,7 +147,8 @@ _DESCRIPTIONS: dict[str, str] = {
     "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",
     # LLM
     "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
-    "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+ / hailo-ollama",
+    "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+, or 'mock' for local dev without a real LLM",
+    "LLM_TIMEOUT": "HTTP timeout in seconds for LLM generate requests (increase for slow hardware)",
     "LLM_ENDPOINT": "URL of the llama-cpp LLM service (default: port 8002)",
     "LLM_OLLAMA_SERVICE_ENDPOINT": "URL of the llm-ollama proxy service (default: port 8003)",
     "LLM_OLLAMA_ENDPOINT": "URL of the raw Ollama API used by hailo-ollama systemd manager (port 8000)",

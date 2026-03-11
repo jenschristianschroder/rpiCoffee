@@ -256,6 +256,7 @@
       },
       "on_failure": "skip",
       "retry_count": 1,
+      "timeout": null,
       "enabled": true
     },
     {
@@ -266,6 +267,7 @@
       },
       "on_failure": "skip",
       "retry_count": 1,
+      "timeout": 120.0,
       "enabled": true
     },
     {
@@ -275,6 +277,7 @@
       },
       "on_failure": "skip",
       "retry_count": 1,
+      "timeout": null,
       "enabled": true
     },
     {
@@ -288,6 +291,7 @@
       },
       "on_failure": "skip",
       "retry_count": 1,
+      "timeout": null,
       "enabled": true
     }
   ]

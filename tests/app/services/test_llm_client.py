@@ -15,6 +15,7 @@ def _mock_config(monkeypatch):
     with patch("services.llm_client.config") as cfg:
         cfg.LLM_ENDPOINT = "http://llm:8002"
         cfg.LLM_ENABLED = True
+        cfg.get = lambda key: {"LLM_TIMEOUT": 120}.get(key, None)
         yield cfg
 
 
@@ -79,3 +80,17 @@ class TestLLMClient:
         )
         result = await LLMClient.update_settings({"temperature": 0.5})
         assert result["ok"] is True
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_generate_uses_config_timeout(self, _mock_config):
+        """Verify the generate method reads timeout from config."""
+        _mock_config.get = lambda key: {"LLM_TIMEOUT": 300}.get(key, None)
+        respx.post("http://llm:8002/generate").mock(
+            return_value=httpx.Response(200, json={
+                "response": "Coffee!", "tokens": 1, "elapsed_s": 0.1, "tokens_per_s": 10.0
+            })
+        )
+        result = await LLMClient.generate("espresso")
+        assert result is not None
+        assert result["response"] == "Coffee!"
