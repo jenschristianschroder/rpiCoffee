@@ -176,8 +176,24 @@ def _load_settings() -> None:
 
 
 def _save_settings() -> None:
+    """Atomically persist runtime settings to *SETTINGS_PATH*.
+
+    Writes to a sibling temp file first, then uses :func:`os.replace` to
+    swap it into place.  This guarantees that a reader always sees either
+    the old complete file or the new complete file — never a partial write.
+    """
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(_runtime, indent=2))
+    fd, tmp_name = tempfile.mkstemp(dir=SETTINGS_PATH.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(_runtime, indent=2) + "\n")
+        os.replace(tmp_name, SETTINGS_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 @app.on_event("startup")
