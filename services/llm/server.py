@@ -29,8 +29,8 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 from llama_cpp import Llama
+from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 logger = logging.getLogger("llm")
@@ -59,11 +59,28 @@ _SETTINGS_REGISTRY: list[dict[str, str]] = [
     {"key": "CTX_SIZE", "name": "Context Size", "description": "Model context window size in tokens", "type": "int"},
     {"key": "THREADS", "name": "Threads", "description": "Number of CPU threads for inference", "type": "int"},
     {"key": "BATCH_SIZE", "name": "Batch Size", "description": "Batch size for prompt evaluation", "type": "int"},
-    {"key": "LLM_MAX_TOKENS", "name": "Max Tokens", "description": "Maximum number of tokens to generate per request", "type": "int"},
-    {"key": "LLM_TEMPERATURE", "name": "Temperature", "description": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)", "type": "float"},
-    {"key": "LLM_TOP_P", "name": "Top-P", "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)", "type": "float"},
-    {"key": "LLM_TTS", "name": "TTS Mode", "description": "Optimize output text for text-to-speech when enabled", "type": "bool"},
-    {"key": "LLM_SYSTEM_MESSAGE", "name": "System Message", "description": "System prompt sent to the model to control tone, style, and output format", "type": "str"},
+    {
+        "key": "LLM_MAX_TOKENS", "name": "Max Tokens",
+        "description": "Maximum number of tokens to generate per request", "type": "int",
+    },
+    {
+        "key": "LLM_TEMPERATURE", "name": "Temperature",
+        "description": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)",
+        "type": "float",
+    },
+    {
+        "key": "LLM_TOP_P", "name": "Top-P",
+        "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)",
+        "type": "float",
+    },
+    {
+        "key": "LLM_TTS", "name": "TTS Mode",
+        "description": "Optimize output text for text-to-speech when enabled", "type": "bool",
+    },
+    {
+        "key": "LLM_SYSTEM_MESSAGE", "name": "System Message",
+        "description": "System prompt sent to the model to control tone, style, and output format", "type": "str",
+    },
 ]
 
 
@@ -238,7 +255,8 @@ async def manifest():
         "version": "2.0.0",
         "description": "Coffee comment generator using fine-tuned Qwen2.5-0.5B (llama-cpp)",
         "inputs": [
-            {"name": "coffee_label", "type": "string", "required": True, "description": "Coffee type label from classifier"},
+            {"name": "coffee_label", "type": "string", "required": True,
+             "description": "Coffee type label from classifier"},
             {"name": "timestamp", "type": "string", "required": True, "description": "ISO-8601 timestamp of brew"},
         ],
         "outputs": [

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
-
-from pydantic import BaseModel, Field
 
 from models.manifest import ServiceManifest
+from pydantic import BaseModel, Field
 
 
 class ServiceRegistration(BaseModel):

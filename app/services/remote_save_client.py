@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-
 from config import config
 
 logger = logging.getLogger("rpicoffee.remote_save")

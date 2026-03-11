@@ -30,6 +30,12 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+# Testing & coverage
+.coverage
+htmlcov/
+coverage.xml
+.pytest_cache/
+
 # IDE
 .vscode/
 .idea/

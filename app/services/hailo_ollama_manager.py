@@ -11,7 +11,6 @@ import asyncio
 import logging
 
 import httpx
-
 from config import config
 
 logger = logging.getLogger("rpicoffee.hailo_ollama")

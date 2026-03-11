@@ -14,7 +14,6 @@ import logging
 import time
 
 import serial
-
 from config import config
 
 logger = logging.getLogger("rpicoffee.sensor.reader")
