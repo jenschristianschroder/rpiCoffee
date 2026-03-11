@@ -176,6 +176,7 @@ Install test dependencies in a shared `requirements-test.txt` at the repository 
 ```
 pytest>=8.0
 pytest-asyncio>=0.23
+pytest-cov>=5.0       # Coverage reporting
 respx>=0.21          # Mock httpx requests
 httpx>=0.27          # Required by respx
 ```
@@ -188,7 +189,7 @@ pytest tests/ -v
 
 ### Async tests
 
-Mark async test functions and set the default asyncio mode in `pyproject.toml` or `pytest.ini`:
+Set `asyncio_mode = "auto"` in `pyproject.toml` so every `async def test_*` function is automatically treated as an asyncio test — no `@pytest.mark.asyncio` decorator needed:
 
 ```toml
 # pyproject.toml
@@ -196,12 +197,14 @@ Mark async test functions and set the default asyncio mode in `pyproject.toml` o
 asyncio_mode = "auto"
 ```
 
+Because `pipeline.py` lives under `app/`, add `app/` to `PYTHONPATH` (e.g. via the `PYTHONPATH=app` env var when running pytest) so tests can import it as a top-level module. Patch the full dotted path as seen from the module's own namespace:
+
 ```python
 # tests/app/test_pipeline.py
-import pytest
 from unittest.mock import AsyncMock, patch
 
 async def test_run_pipeline_returns_error_on_empty_sensor_data():
+    # "pipeline.read_sensor" is the path used inside app/pipeline.py
     with patch("pipeline.read_sensor", new=AsyncMock(return_value=[])):
         from pipeline import run_pipeline
         result = await run_pipeline()
@@ -211,39 +214,55 @@ async def test_run_pipeline_returns_error_on_empty_sensor_data():
 
 ### Config isolation
 
-Override the singleton in tests with a temporary `ConfigManager` instance backed by a temp `.env` file — never mutate the production singleton directly:
+The config system reads from both `.env` **and** a JSON file under `SETTINGS_DIR` (computed at import time). To keep tests isolated and avoid touching `data/settings.json`, redirect `SETTINGS_DIR` to a temp directory **before** importing `config`, then use a temporary `.env` file:
 
 ```python
 # tests/conftest.py
-import pytest
+import importlib
 from pathlib import Path
+
+import pytest
+
 from config import ConfigManager
 
+
 @pytest.fixture()
-def test_config(tmp_path: Path) -> ConfigManager:
+def test_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
+    # Point SETTINGS_DIR at a per-test temp dir so JSON settings don't
+    # read/write the real data/settings.json.
+    monkeypatch.setenv("SETTINGS_DIR", str(tmp_path))
+
+    # Reload the config module so the module-level SETTINGS_PATH is
+    # recomputed based on the temporary SETTINGS_DIR.
+    import config as config_module
+    importlib.reload(config_module)
+
+    # Back the ConfigManager with a temp .env file for this test only.
     env_file = tmp_path / ".env"
     env_file.write_text("SENSOR_MODE=mock\nSENSOR_DURATION_S=5\n")
-    return ConfigManager(env_file=env_file)
+    return config_module.ConfigManager(env_file=env_file)
 ```
 
 ### Mocking HTTP service clients
 
-Use **respx** to mock `httpx` calls without starting a real server:
+Use **respx** to mock `httpx` calls without starting a real server. `ClassifierClient` uses the endpoint from `config.CLASSIFIER_ENDPOINT`, so set that env var and respx-mock the correct route:
 
 ```python
-import respx
 import httpx
 import pytest
+import respx
 
 @pytest.mark.respx(base_url="http://classifier:8001")
-async def test_classifier_client_predict(respx_mock):
-    respx_mock.post("/predict").mock(
+async def test_classifier_client_classify(respx_mock, monkeypatch):
+    monkeypatch.setenv("CLASSIFIER_ENDPOINT", "http://classifier:8001")
+    respx_mock.post("/classify").mock(
         return_value=httpx.Response(200, json={"label": "espresso", "confidence": 0.95})
     )
     from services.classifier_client import ClassifierClient
-    client = ClassifierClient(endpoint="http://classifier:8001", enabled=True)
-    result = await client.predict([{"acc_x": 0.1, "acc_y": 0.0, "acc_z": 1.0,
-                                    "gyro_x": 0.0, "gyro_y": 0.0, "gyro_z": 0.0}])
+    result = await ClassifierClient.classify([
+        {"acc_x": 0.1, "acc_y": 0.0, "acc_z": 1.0,
+         "gyro_x": 0.0, "gyro_y": 0.0, "gyro_z": 0.0}
+    ])
     assert result["label"] == "espresso"
 ```
 
@@ -271,7 +290,7 @@ Each microservice in `services/<name>/` should have its own tests using FastAPI'
 ```python
 # tests/services/classifier/test_classifier_app.py
 from fastapi.testclient import TestClient
-from app import app   # services/classifier/app.py
+from main import app   # services/classifier/main.py
 
 client = TestClient(app)
 
@@ -279,8 +298,8 @@ def test_health():
     response = client.get("/health")
     assert response.status_code == 200
 
-def test_predict_returns_label(sample_sensor_data):
-    response = client.post("/predict", json={"data": sample_sensor_data})
+def test_classify_returns_label(sample_sensor_data):
+    response = client.post("/classify", json={"data": sample_sensor_data})
     assert response.status_code == 200
     assert "label" in response.json()
 ```
@@ -293,7 +312,7 @@ def test_predict_returns_label(sample_sensor_data):
 | `sensor/reader.py` | `filter_sensor_channels` with acc/gyro disabled; mock-buffer read path |
 | Service clients | Happy path, HTTP error propagation, `enabled=False` short-circuit |
 | `pipeline.py` | Empty sensor data → error result; data-collect mode; stage skip on disabled service |
-| Microservice apps | `/health` endpoints; `/predict` with valid and invalid payloads |
+| Microservice apps | `/health` endpoints; primary inference endpoints (e.g., classifier `/classify`) with valid and invalid payloads |
 
 ### Coverage
 
@@ -337,7 +356,8 @@ jobs:
         env:
           SENSOR_MODE: mock
           SETTINGS_DIR: /tmp/rpicoffee-test
-        run: pytest tests/ -v --tb=short
+          PYTHONPATH: app
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=html
 
       - name: Upload coverage report
         if: always()
