@@ -252,7 +252,7 @@
     {
       "service": "classifier",
       "input_map": {
-        "data": "$sensor.data"
+        "sensor_data": "$sensor.data"
       },
       "on_failure": "skip",
       "retry_count": 1,

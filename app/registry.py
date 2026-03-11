@@ -200,14 +200,21 @@ class ServiceRegistry:
         """Return the full config (services + pipeline)."""
         return self._config
 
-    def validate_pipeline(self) -> list[str]:
-        """Validate the current pipeline wiring.  Returns a list of issues."""
+    def validate_pipeline(self, steps: list[PipelineStep] | None = None) -> list[str]:
+        """Validate pipeline wiring.  Returns a list of issues.
+
+        Args:
+            steps: Pipeline steps to validate.  When *None* (the default) the
+                   currently stored pipeline is used.
+        """
         issues: list[str] = []
         available_outputs: dict[str, set[str]] = {
             "$sensor": {"data", "timestamp"},
         }
 
-        for i, step in enumerate(self._config.pipeline):
+        pipeline = steps if steps is not None else self._config.pipeline
+
+        for i, step in enumerate(pipeline):
             reg = self._config.services.get(step.service)
             if not reg:
                 issues.append(f"Step {i}: service '{step.service}' is not registered")
