@@ -7,9 +7,7 @@ Runs entirely locally — no cloud services required.
 
 from __future__ import annotations
 
-import io
 import json
-import wave
 import logging
 import os
 import time
@@ -17,7 +15,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.tts_engine import TTSEngine, TTSEngineError

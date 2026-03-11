@@ -7,7 +7,6 @@ from unittest.mock import patch
 import httpx
 import pytest
 import respx
-
 from services.llm_client import LLMClient
 
 

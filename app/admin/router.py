@@ -7,12 +7,11 @@ import os
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, Form, Request, Response
+from config import _DESCRIPTIONS, config
+from fastapi import APIRouter, Cookie, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
-
-from config import _DESCRIPTIONS, config
 
 logger = logging.getLogger("rpicoffee.admin")
 

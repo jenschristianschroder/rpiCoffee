@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -41,7 +39,6 @@ def mock_config(tmp_path, monkeypatch):
 def app_client(mock_config):
     """Create an httpx AsyncClient for the FastAPI app with mocked startup."""
     import httpx
-    from unittest.mock import AsyncMock
 
     # Patch heavy startup operations
     with patch("main.registry") as mock_reg, \

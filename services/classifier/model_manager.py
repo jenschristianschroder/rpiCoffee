@@ -7,10 +7,8 @@ Uses scikit-learn RandomForestClassifier with StandardScaler in a Pipeline.
 
 from __future__ import annotations
 
-import glob
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -18,13 +16,12 @@ from typing import Any
 
 import joblib
 import numpy as np
+from features import extract_features, extract_features_from_csv, get_feature_names
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-
-from features import extract_features, extract_features_from_csv, get_feature_names
 
 logger = logging.getLogger("classifier.model_manager")
 

@@ -6,7 +6,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from pipeline import _data_collect, _empty_result, _sse, run_pipeline, run_pipeline_streaming
 
 

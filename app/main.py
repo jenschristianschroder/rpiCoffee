@@ -6,26 +6,25 @@ import asyncio
 import json
 import logging
 import os
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, UploadFile, File
+from admin.router import router as admin_router
+from api.registry_routes import router as registry_router
+from config import config
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
-from config import config
-from admin.router import router as admin_router
-from api.registry_routes import router as registry_router
 from pipeline import run_pipeline, run_pipeline_streaming
 from registry import registry
 from services.classifier_client import ClassifierClient
 from services.llm_client import LLMClient
 from services.ollama_client import OllamaClient
-from services.tts_client import TTSClient
 from services.remote_save_client import RemoteSaveClient
+from services.tts_client import TTSClient
+
 from services import training_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")

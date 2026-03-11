@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
 import respx
-
 from models.manifest import (
     ManifestEndpoint,
     ManifestEndpoints,
     ServiceManifest,
 )
-from models.registry import PipelineConfig, PipelineStep, ServiceRegistration
+from models.registry import ServiceRegistration
 from registry import ServiceRegistry
 
 
@@ -43,8 +41,8 @@ def mock_registry():
 
 @pytest.fixture()
 def test_client(mock_registry):
-    from fastapi import FastAPI
     from api.registry_routes import router
+    from fastapi import FastAPI
 
     app = FastAPI()
     app.include_router(router)

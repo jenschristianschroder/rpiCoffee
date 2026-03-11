@@ -225,7 +225,7 @@ def _print_generation_stats(meta: dict):
     prompt_s = prompt_ns / 1e9
     eval_s = eval_ns / 1e9
 
-    print(f"\n  ── Stats ──────────────────────────────────────")
+    print("\n  ── Stats ──────────────────────────────────────")
     print(f"  Total time       : {total_s:.2f}s")
     if load_s:
         print(f"  Model load       : {load_s:.2f}s")
@@ -235,7 +235,7 @@ def _print_generation_stats(meta: dict):
     if eval_count and eval_s:
         print(f"  Generation       : {eval_count} tokens in {eval_s:.2f}s "
               f"({eval_count / eval_s:.1f} tok/s)")
-    print(f"  ────────────────────────────────────────────────")
+    print("  ────────────────────────────────────────────────")
 
 
 # ── 3. Benchmark ──────────────────────────────────────────────────────────────
@@ -282,11 +282,11 @@ def benchmark(url: str, model: str, rounds: int = 5,
         avg_wall = sum(r["wall_time"] for r in results) / len(results)
         avg_tps = sum(r["tok_per_s"] for r in results) / len(results)
         total_tokens = sum(r["eval_count"] for r in results)
-        print(f"\n  ── Summary ────────────────────────────────────")
+        print("\n  ── Summary ────────────────────────────────────")
         print(f"  Avg wall time  : {avg_wall:.2f}s")
         print(f"  Avg throughput : {avg_tps:.1f} tok/s")
         print(f"  Total tokens   : {total_tokens}")
-        print(f"  ────────────────────────────────────────────────")
+        print("  ────────────────────────────────────────────────")
 
     return results
 

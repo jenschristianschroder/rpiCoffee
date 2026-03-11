@@ -202,7 +202,7 @@ class ConfigManager:
         self._env_file = env_file
         self.load()
 
-    #  Loading 
+    #  Loading
 
     def load(self) -> None:
         with self._lock:
@@ -245,7 +245,7 @@ class ConfigManager:
                 ).decode()
                 self._save_unlocked()
 
-    #  Persistence 
+    #  Persistence
 
     def save(self) -> None:
         with self._lock:
@@ -261,7 +261,7 @@ class ConfigManager:
         with open(SETTINGS_PATH, "w") as f:
             json.dump(persistable, f, indent=2)
 
-    #  Password management 
+    #  Password management
 
     def verify_password(self, plain_password: str) -> bool:
         """Check a plaintext password against the stored bcrypt hash."""
@@ -277,7 +277,7 @@ class ConfigManager:
             self._data["ADMIN_PASSWORD_HASH"] = hashed
         self.save()
 
-    #  Accessors 
+    #  Accessors
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._lock:

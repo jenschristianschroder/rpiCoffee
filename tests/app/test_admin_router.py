@@ -5,11 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import main as main_mod
 import pytest
 from httpx import ASGITransport
 from itsdangerous import URLSafeSerializer
-
-import main as main_mod
 
 
 def _make_token(secret: str = "test-secret", authenticated: bool = True) -> str:

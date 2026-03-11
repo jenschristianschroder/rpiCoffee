@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from sensor.reader import filter_sensor_channels, read_sensor, read_sensor_streaming
 
 
