@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-
 from services.training_data import (
     delete_all_training_data,
     delete_sample_file,

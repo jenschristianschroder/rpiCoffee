@@ -38,14 +38,38 @@ SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
 _runtime: dict[str, Any] = {}
 
 _SETTINGS_REGISTRY: list[dict[str, str]] = [
-    {"key": "OLLAMA_ENDPOINT", "name": "Ollama Endpoint", "description": "URL of the upstream Ollama API server", "type": "str"},
+    {
+        "key": "OLLAMA_ENDPOINT", "name": "Ollama Endpoint",
+        "description": "URL of the upstream Ollama API server", "type": "str",
+    },
     {"key": "OLLAMA_MODEL", "name": "Model", "description": "Ollama model name to use for generation", "type": "str"},
-    {"key": "OLLAMA_KEEP_ALIVE", "name": "Keep Alive", "description": "Ollama keep_alive: -1 = keep model loaded forever, 0 = unload immediately, or seconds", "type": "int"},
-    {"key": "LLM_MAX_TOKENS", "name": "Max Tokens", "description": "Maximum number of tokens to generate per request", "type": "int"},
-    {"key": "LLM_TEMPERATURE", "name": "Temperature", "description": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)", "type": "float"},
-    {"key": "LLM_TOP_P", "name": "Top-P", "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)", "type": "float"},
-    {"key": "LLM_TTS", "name": "TTS Mode", "description": "Optimize output text for text-to-speech when enabled", "type": "bool"},
-    {"key": "LLM_SYSTEM_MESSAGE", "name": "System Message", "description": "System prompt sent to the model to control tone, style, and output format", "type": "str"},
+    {
+        "key": "OLLAMA_KEEP_ALIVE", "name": "Keep Alive",
+        "description": "Ollama keep_alive: -1 = keep model loaded forever, 0 = unload immediately, or seconds",
+        "type": "int",
+    },
+    {
+        "key": "LLM_MAX_TOKENS", "name": "Max Tokens",
+        "description": "Maximum number of tokens to generate per request", "type": "int",
+    },
+    {
+        "key": "LLM_TEMPERATURE", "name": "Temperature",
+        "description": "Controls randomness: lower is more deterministic, higher is more creative (0.0\u20132.0)",
+        "type": "float",
+    },
+    {
+        "key": "LLM_TOP_P", "name": "Top-P",
+        "description": "Nucleus sampling: only tokens within this cumulative probability are considered (0.0\u20131.0)",
+        "type": "float",
+    },
+    {
+        "key": "LLM_TTS", "name": "TTS Mode",
+        "description": "Optimize output text for text-to-speech when enabled", "type": "bool",
+    },
+    {
+        "key": "LLM_SYSTEM_MESSAGE", "name": "System Message",
+        "description": "System prompt sent to the model to control tone, style, and output format", "type": "str",
+    },
 ]
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -245,7 +269,8 @@ async def manifest():
         "version": "1.0.0",
         "description": "Coffee comment generator via Ollama proxy (Hailo AI HAT+)",
         "inputs": [
-            {"name": "coffee_label", "type": "string", "required": True, "description": "Coffee type label from classifier"},
+            {"name": "coffee_label", "type": "string", "required": True,
+             "description": "Coffee type label from classifier"},
             {"name": "timestamp", "type": "string", "required": True, "description": "ISO-8601 timestamp of brew"},
         ],
         "outputs": [

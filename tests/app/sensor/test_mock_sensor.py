@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from sensor.mock import MockSensor, _load_csv_as_dicts, _load_csv_rows, _is_spike_row
-
+from sensor.mock import MockSensor, _is_spike_row, _load_csv_as_dicts, _load_csv_rows
 
 _CSV_HEADER = "label,elapsed_s,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z\n"
 _CSV_NORMAL_ROW = "espresso,0.01,0.1,-0.2,9.8,0.5,-0.3,0.1\n"

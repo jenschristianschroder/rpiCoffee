@@ -5,10 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import main as main_mod
 import pytest
 from httpx import ASGITransport
-
-import main as main_mod
 
 
 @pytest.fixture()

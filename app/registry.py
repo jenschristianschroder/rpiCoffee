@@ -6,7 +6,6 @@ and persistence of the pipeline configuration to ``data/pipeline.json``.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -14,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
 from config import config
 from models.manifest import ServiceManifest
 from models.registry import PipelineConfig, PipelineStep, ServiceRegistration

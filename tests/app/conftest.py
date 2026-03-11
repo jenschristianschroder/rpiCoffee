@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -41,13 +39,12 @@ def mock_config(tmp_path, monkeypatch):
 def app_client(mock_config):
     """Create an httpx AsyncClient for the FastAPI app with mocked startup."""
     import httpx
-    from unittest.mock import AsyncMock
 
     # Patch heavy startup operations
     with patch("main.registry") as mock_reg, \
          patch("main._start_sensor"), \
          patch("main._ensure_auto_trigger"), \
-         patch("main.run_pipeline", new_callable=AsyncMock) as mock_pipeline:
+         patch("main.run_pipeline", new_callable=AsyncMock):
 
         mock_reg.load = MagicMock()
         mock_reg.list_all = MagicMock(return_value=[])

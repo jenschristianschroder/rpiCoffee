@@ -23,15 +23,13 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, UploadFile
+from model_manager import MODEL_DIR, TRAINING_DIR, model_manager
 from pydantic import BaseModel, Field
-
-from model_manager import model_manager, TRAINING_DIR, MODEL_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 logger = logging.getLogger("classifier")
@@ -47,9 +45,18 @@ SETTINGS_PATH = Path(os.environ.get("SETTINGS_DIR", "/data")) / "settings.json"
 _runtime: dict[str, Any] = {}
 
 _SETTINGS_REGISTRY: list[dict[str, str]] = [
-    {"key": "CONFIDENCE_THRESHOLD", "name": "Confidence Threshold", "description": "Minimum confidence score to accept a classification result", "type": "float"},
-    {"key": "MODEL_DIR", "name": "Model Directory", "description": "Path where trained model files are stored", "type": "str"},
-    {"key": "TRAINING_DIR", "name": "Training Directory", "description": "Path to the directory containing labelled training CSVs", "type": "str"},
+    {
+        "key": "CONFIDENCE_THRESHOLD", "name": "Confidence Threshold",
+        "description": "Minimum confidence score to accept a classification result", "type": "float",
+    },
+    {
+        "key": "MODEL_DIR", "name": "Model Directory",
+        "description": "Path where trained model files are stored", "type": "str",
+    },
+    {
+        "key": "TRAINING_DIR", "name": "Training Directory",
+        "description": "Path to the directory containing labelled training CSVs", "type": "str",
+    },
 ]
 
 

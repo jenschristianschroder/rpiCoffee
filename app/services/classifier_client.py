@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 import httpx
-
 from config import config
 
 logger = logging.getLogger("rpicoffee.classifier_client")

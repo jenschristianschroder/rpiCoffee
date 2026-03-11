@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from services.hailo_ollama_manager import is_active, is_enabled, stop_and_disable
 
 

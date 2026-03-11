@@ -6,9 +6,8 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-
 from models.registry import PipelineStep
+from pydantic import BaseModel, Field
 from registry import registry
 
 logger = logging.getLogger(__name__)

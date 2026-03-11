@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
 import respx
-
 from models.manifest import ServiceManifest
-from models.registry import PipelineConfig, PipelineStep, ServiceRegistration
+from models.registry import PipelineStep, ServiceRegistration
 from registry import ServiceRegistry
 
 
