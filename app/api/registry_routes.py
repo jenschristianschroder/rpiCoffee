@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from models.registry import PipelineStep
 from pydantic import BaseModel, Field
 from registry import registry
@@ -164,14 +164,14 @@ async def set_pipeline(req: PipelineUpdateRequest) -> dict[str, Any]:
 
 
 @router.post("/pipeline/validate")
-async def validate_pipeline(req: ValidatePipelineRequest = ValidatePipelineRequest()) -> dict[str, Any]:
+async def validate_pipeline(req: ValidatePipelineRequest | None = Body(None)) -> dict[str, Any]:
     """Validate pipeline wiring and return any issues.
 
     If a ``pipeline`` list is supplied in the request body it is validated
     instead of the currently stored pipeline, allowing the editor to validate
     the canvas state without saving first.
     """
-    steps = req.pipeline if req.pipeline is not None else None
+    steps = req.pipeline if (req is not None and req.pipeline is not None) else None
     issues = registry.validate_pipeline(steps=steps)
     return {
         "valid": len(issues) == 0,
