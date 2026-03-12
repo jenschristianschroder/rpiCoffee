@@ -180,6 +180,8 @@ class PipelineEngine:
         ep = manifest.endpoints.execute
         max_attempts = step.retry_count if step.on_failure == "retry" else 1
 
+        timeout_kwargs = {"timeout": step.timeout} if step.timeout is not None else {}
+
         last_error = ""
         for attempt in range(1, max_attempts + 1):
             try:
@@ -188,6 +190,7 @@ class PipelineEngine:
                     method=ep.method,
                     path=ep.path,
                     payload=payload,
+                    **timeout_kwargs,
                 )
 
                 # Handle binary responses (e.g. TTS audio)

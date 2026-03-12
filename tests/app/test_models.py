@@ -89,8 +89,19 @@ class TestRegistryModels:
         step = PipelineStep(service="classifier")
         assert step.on_failure == "skip"
         assert step.retry_count == 1
+        assert step.timeout is None
         assert step.enabled is True
         assert step.input_map == {}
+
+    def test_pipeline_step_with_timeout(self):
+        from models.registry import PipelineStep
+        step = PipelineStep(service="llm", timeout=120.0)
+        assert step.timeout == 120.0
+
+    def test_pipeline_step_timeout_none(self):
+        from models.registry import PipelineStep
+        step = PipelineStep(service="classifier", timeout=None)
+        assert step.timeout is None
 
     def test_pipeline_step_with_input_map(self):
         from models.registry import PipelineStep

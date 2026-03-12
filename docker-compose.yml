@@ -35,8 +35,8 @@ services:
       - OMP_NUM_THREADS=4
       - THREADS=4
       - SETTINGS_DIR=/data
-    cpus: 4
-    mem_limit: 2g
+    cpus: 8
+    mem_limit: 8g
     networks:
       - coffee-net
     restart: unless-stopped
