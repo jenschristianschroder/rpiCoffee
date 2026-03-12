@@ -124,8 +124,22 @@ class MockSensor:
         """On Windows, returns the pre-loaded sensor data directly."""
         return self._buffered_data
 
-    def start(self, on_done: Callable[[], None] | None = None) -> str:
-        """Create the mock and begin replaying data. Returns the port path."""
+    def start(
+        self,
+        on_done: Callable[[], None] | None = None,
+        sample_only: bool = False,
+    ) -> str:
+        """Create the mock and begin replaying data. Returns the port path.
+
+        Parameters
+        ----------
+        on_done:
+            Optional callback invoked when replay finishes.
+        sample_only:
+            When True, restrict file selection to ``*.csv.sample`` files only.
+            Use this for simulation (test/simulate button) so that recorded
+            training data (``*.csv``) is never replayed.
+        """
         # On Windows, always reload the buffer to pick up config changes
         if self._running and _IS_WINDOWS:
             self._running = False
@@ -133,13 +147,20 @@ class MockSensor:
             raise RuntimeError("Mock sensor is already running")
 
         if _IS_WINDOWS:
-            return self._start_windows(on_done)
+            return self._start_windows(on_done, sample_only=sample_only)
         else:
-            return self._start_linux(on_done)
+            return self._start_linux(on_done, sample_only=sample_only)
 
-    def _start_windows(self, on_done: Callable[[], None] | None = None) -> str:
+    def _start_windows(
+        self,
+        on_done: Callable[[], None] | None = None,
+        sample_only: bool = False,
+    ) -> str:
         """Windows: load CSV data into memory buffer."""
-        csv_files = list(DATA_DIR.glob("*.csv")) + list(DATA_DIR.glob("*.csv.sample"))
+        if sample_only:
+            csv_files = list(DATA_DIR.glob("*.csv.sample"))
+        else:
+            csv_files = list(DATA_DIR.glob("*.csv")) + list(DATA_DIR.glob("*.csv.sample"))
         if not csv_files:
             logger.error("No CSV files found in %s", DATA_DIR)
             self._slave_path = "__mock__"
@@ -161,7 +182,11 @@ class MockSensor:
                     self._buffered_data[-1]["elapsed_s"] if self._buffered_data else 0)
         return self._slave_path
 
-    def _start_linux(self, on_done: Callable[[], None] | None = None) -> str:
+    def _start_linux(
+        self,
+        on_done: Callable[[], None] | None = None,
+        sample_only: bool = False,
+    ) -> str:
         """Linux: create PTY and stream data through it."""
         import pty as _pty
 
@@ -170,7 +195,9 @@ class MockSensor:
         self._running = True
 
         logger.info("Mock sensor PTY created: %s", self._slave_path)
-        self._task = asyncio.get_event_loop().create_task(self._replay(on_done))
+        self._task = asyncio.get_event_loop().create_task(
+            self._replay(on_done, sample_only=sample_only)
+        )
         return self._slave_path
 
     def stop(self) -> None:
@@ -181,10 +208,17 @@ class MockSensor:
         self._close_fds()
         self._buffered_data = None
 
-    async def _replay(self, on_done: Callable[[], None] | None = None) -> None:
+    async def _replay(
+        self,
+        on_done: Callable[[], None] | None = None,
+        sample_only: bool = False,
+    ) -> None:
         """Replay a randomly chosen CSV file through the PTY master fd."""
         try:
-            csv_files = list(DATA_DIR.glob("*.csv")) + list(DATA_DIR.glob("*.csv.sample"))
+            if sample_only:
+                csv_files = list(DATA_DIR.glob("*.csv.sample"))
+            else:
+                csv_files = list(DATA_DIR.glob("*.csv")) + list(DATA_DIR.glob("*.csv.sample"))
             if not csv_files:
                 logger.error("No CSV files found in %s", DATA_DIR)
                 return

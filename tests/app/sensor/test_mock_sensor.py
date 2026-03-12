@@ -114,3 +114,34 @@ class TestMockSensor:
         with patch("sensor.mock.DATA_DIR", tmp_path):
             port = sensor.start()  # should not raise on Windows
         assert port == "__mock__"
+
+    @patch("sensor.mock._IS_WINDOWS", True)
+    @patch("sensor.mock.config")
+    def test_start_windows_sample_only_uses_csv_sample(self, mock_config, tmp_path):
+        """sample_only=True must skip regular *.csv and only use *.csv.sample."""
+        mock_config.SENSOR_DURATION_S = 30
+        # Create both a training CSV and a sample CSV
+        csv_file = tmp_path / "espresso.csv"
+        csv_file.write_text(_CSV_HEADER + _CSV_NORMAL_ROW)
+        sample_file = tmp_path / "espresso.csv.sample"
+        sample_file.write_text(_CSV_HEADER + _CSV_NORMAL_ROW)
+        sensor = MockSensor()
+        with patch("sensor.mock.DATA_DIR", tmp_path):
+            port = sensor.start(sample_only=True)
+        assert port == "__mock__"
+        assert len(sensor.buffered_data) == 1
+        assert sensor.is_running is True
+
+    @patch("sensor.mock._IS_WINDOWS", True)
+    @patch("sensor.mock.config")
+    def test_start_windows_sample_only_no_sample_files(self, mock_config, tmp_path):
+        """sample_only=True with no *.csv.sample files yields empty buffer."""
+        mock_config.SENSOR_DURATION_S = 30
+        # Only a regular CSV, no .csv.sample
+        csv_file = tmp_path / "espresso.csv"
+        csv_file.write_text(_CSV_HEADER + _CSV_NORMAL_ROW)
+        sensor = MockSensor()
+        with patch("sensor.mock.DATA_DIR", tmp_path):
+            port = sensor.start(sample_only=True)
+        assert port == "__mock__"
+        assert sensor.buffered_data == []
