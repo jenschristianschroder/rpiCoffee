@@ -144,7 +144,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "SENSOR_COOLDOWN_S": "Seconds to wait after a capture completes before allowing a new auto-trigger",
     # Classifier
     "CLASSIFIER_ENABLED": "Enable the ML classifier service for coffee-type detection",
-    "CLASSIFIER_ENDPOINT": "URL of the classifier service (must expose a /predict endpoint)",
+    "CLASSIFIER_ENDPOINT": "Base URL of the classifier service (no trailing slash, default: port 8001)",
     # LLM
     "LLM_ENABLED": "Enable the LLM service for generating text descriptions of brews",
     "LLM_BACKEND": "'llama-cpp' for the built-in GGUF server, 'ollama' for Hailo AI HAT+, or 'mock' for local dev",
