@@ -153,6 +153,71 @@ class TestPipelineEndpoints:
         assert "valid" in data
         assert "issues" in data
 
+    @pytest.mark.asyncio
+    async def test_validate_pipeline_with_body_valid(self, test_client, mock_registry):
+        """Validate a pipeline supplied in the request body (current canvas state)."""
+        mock_registry._config.services["classifier"] = ServiceRegistration(
+            name="classifier",
+            endpoint="http://x",
+            manifest=_make_manifest(),
+        )
+        async with test_client as client:
+            resp = await client.post(
+                "/api/registry/pipeline/validate",
+                json={"pipeline": [{"service": "classifier", "input_map": {}, "on_failure": "skip",
+                                    "retry_count": 1, "enabled": True}]},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "valid" in data
+        assert "issues" in data
+
+    @pytest.mark.asyncio
+    async def test_validate_pipeline_with_body_missing_required_input(self, test_client, mock_registry):
+        """Validate endpoint returns issue when required input is absent in the supplied pipeline."""
+        from models.manifest import ManifestInput
+
+        manifest = _make_manifest()
+        manifest.inputs = [ManifestInput(name="sensor_data", type="array", required=True, description="data")]
+        mock_registry._config.services["classifier"] = ServiceRegistration(
+            name="classifier", endpoint="http://x", manifest=manifest
+        )
+        async with test_client as client:
+            resp = await client.post(
+                "/api/registry/pipeline/validate",
+                json={"pipeline": [{"service": "classifier", "input_map": {}, "on_failure": "skip",
+                                    "retry_count": 1, "enabled": True}]},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert any("sensor_data" in issue for issue in data["issues"])
+
+    @pytest.mark.asyncio
+    async def test_validate_pipeline_body_overrides_stored(self, test_client, mock_registry):
+        """Supplying a pipeline body validates it instead of the stored pipeline."""
+        from models.manifest import ManifestInput
+
+        manifest = _make_manifest()
+        manifest.inputs = [ManifestInput(name="sensor_data", type="array", required=True, description="data")]
+        mock_registry._config.services["classifier"] = ServiceRegistration(
+            name="classifier", endpoint="http://x", manifest=manifest
+        )
+        # Store a broken pipeline (missing required input)
+        from models.registry import PipelineStep as _PipelineStep
+        mock_registry.set_pipeline([_PipelineStep(service="classifier", input_map={})])
+
+        # Provide a correct pipeline in the body — should pass
+        async with test_client as client:
+            resp = await client.post(
+                "/api/registry/pipeline/validate",
+                json={"pipeline": [{"service": "classifier",
+                                    "input_map": {"sensor_data": "$sensor.data"},
+                                    "on_failure": "skip", "retry_count": 1, "enabled": True}]},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is True
+
 
 class TestHealthEndpoints:
     @pytest.mark.asyncio
