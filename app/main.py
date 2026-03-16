@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
 from admin.router import router as admin_router
 from api.registry_routes import router as registry_router
 from config import config
@@ -17,7 +18,6 @@ from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import httpx
 from pipeline import run_pipeline, run_pipeline_streaming
 from registry import registry
 from services.classifier_client import ClassifierClient
