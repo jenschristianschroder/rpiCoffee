@@ -107,10 +107,10 @@ class TestRegistryModels:
         from models.registry import PipelineStep
         step = PipelineStep(
             service="classifier",
-            input_map={"sensor_data": "$sensor.data"},
+            input_map={"data": "$sensor.data"},
             on_failure="halt",
         )
-        assert step.input_map["sensor_data"] == "$sensor.data"
+        assert step.input_map["data"] == "$sensor.data"
         assert step.on_failure == "halt"
 
     def test_pipeline_config_empty(self):
@@ -124,7 +124,7 @@ class TestRegistryModels:
         from models.registry import PipelineConfig, PipelineStep, ServiceRegistration
         manifest = ServiceManifest.model_validate(sample_manifest_dict)
         reg = ServiceRegistration(name="test", endpoint="http://localhost:8001", manifest=manifest)
-        step = PipelineStep(service="test", input_map={"sensor_data": "$sensor.data"})
+        step = PipelineStep(service="test", input_map={"data": "$sensor.data"})
         cfg = PipelineConfig(services={"test": reg}, pipeline=[step])
 
         dumped = cfg.model_dump()

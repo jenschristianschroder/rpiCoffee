@@ -52,7 +52,7 @@ def sample_manifest_dict() -> dict:
         "version": "1.0.0",
         "description": "A test service",
         "inputs": [
-            {"name": "sensor_data", "type": "array", "required": True, "description": "Sensor readings"},
+            {"name": "data", "type": "array", "required": True, "description": "Sensor readings"},
         ],
         "outputs": [
             {"name": "label", "type": "string", "description": "Classification label"},

@@ -31,7 +31,7 @@ def manifest_dict() -> dict:
         "name": "classifier",
         "version": "1.0.0",
         "description": "Coffee classifier",
-        "inputs": [{"name": "sensor_data", "type": "array", "required": True, "description": "data"}],
+        "inputs": [{"name": "data", "type": "array", "required": True, "description": "data"}],
         "outputs": [
             {"name": "label", "type": "string", "description": "label"},
             {"name": "confidence", "type": "float", "description": "score"},
@@ -147,7 +147,7 @@ class TestServiceRegistry:
         )
         reg.set_pipeline([PipelineStep(service="classifier", input_map={})])
         issues = reg.validate_pipeline()
-        assert any("required input 'sensor_data' is not mapped" in i for i in issues)
+        assert any("required input 'data' is not mapped" in i for i in issues)
 
     def test_validate_pipeline_valid_wiring(self, reg, manifest_dict):
         manifest = ServiceManifest.model_validate(manifest_dict)
@@ -156,7 +156,7 @@ class TestServiceRegistry:
         )
         reg.set_pipeline([PipelineStep(
             service="classifier",
-            input_map={"sensor_data": "$sensor.data"},
+            input_map={"data": "$sensor.data"},
         )])
         issues = reg.validate_pipeline()
         assert issues == []
@@ -168,7 +168,7 @@ class TestServiceRegistry:
         )
         reg.set_pipeline([PipelineStep(
             service="classifier",
-            input_map={"sensor_data": "$nonexistent.data"},
+            input_map={"data": "$nonexistent.data"},
         )])
         issues = reg.validate_pipeline()
         assert any("hasn't produced output" in i for i in issues)
@@ -184,7 +184,7 @@ class TestServiceRegistry:
 
         # Validate with a correct pipeline passed directly — should have no issues
         issues = reg.validate_pipeline(steps=[
-            PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"})
+            PipelineStep(service="classifier", input_map={"data": "$sensor.data"})
         ])
         assert issues == []
 
@@ -196,14 +196,14 @@ class TestServiceRegistry:
         )
         # Stored pipeline is valid …
         reg.set_pipeline([PipelineStep(
-            service="classifier", input_map={"sensor_data": "$sensor.data"}
+            service="classifier", input_map={"data": "$sensor.data"}
         )])
 
         # … but the supplied steps have a missing required input
         issues = reg.validate_pipeline(steps=[
             PipelineStep(service="classifier", input_map={})
         ])
-        assert any("required input 'sensor_data' is not mapped" in i for i in issues)
+        assert any("required input 'data' is not mapped" in i for i in issues)
 
     def test_persistence_roundtrip(self, reg, tmp_path, manifest_dict):
         manifest = ServiceManifest.model_validate(manifest_dict)
