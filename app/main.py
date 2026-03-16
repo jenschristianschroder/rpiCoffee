@@ -535,9 +535,20 @@ async def service_settings_get(name: str):
             resp = await client.request(ep.method, url)
             resp.raise_for_status()
             return resp.json()
+    except httpx.ConnectError:
+        logger.error("Cannot connect to %s at %s", name, url)
+        return {"error": f"Service {name} is not reachable at {reg.endpoint}"}
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("detail", exc.response.text[:200])
+        except Exception:
+            detail = exc.response.text[:200]
+        logger.error("Settings request to %s returned HTTP %d: %s", name, exc.response.status_code, detail)
+        return {"error": f"Service {name} returned HTTP {exc.response.status_code}: {detail}"}
     except Exception as exc:
         logger.error("Failed to fetch settings from %s (%s): %s", name, url, exc)
-        return {"error": f"Failed to fetch settings from {name}"}
+        return {"error": f"Failed to fetch settings from {name}: {exc}"}
 
 
 @app.patch("/api/services/{name}/settings")
@@ -557,9 +568,20 @@ async def service_settings_update(name: str, request: Request):
             resp = await client.request(ep.method, url, json={"settings": settings})
             resp.raise_for_status()
             result = resp.json()
+    except httpx.ConnectError:
+        logger.error("Cannot connect to %s at %s", name, url)
+        return {"error": f"Service {name} is not reachable at {reg.endpoint}"}
+    except httpx.HTTPStatusError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("detail", exc.response.text[:200])
+        except Exception:
+            detail = exc.response.text[:200]
+        logger.error("Settings update to %s returned HTTP %d: %s", name, exc.response.status_code, detail)
+        return {"error": f"Service {name} returned HTTP {exc.response.status_code}: {detail}"}
     except Exception as exc:
         logger.error("Failed to update settings on %s (%s): %s", name, url, exc)
-        return {"error": f"Failed to update settings on {name}"}
+        return {"error": f"Failed to update settings on {name}: {exc}"}
     # Sync any keys that also exist in app config
     _APP_CONFIG_KEYS = {"LLM_BACKEND", "LLM_MODEL", "LLM_KEEP_ALIVE"}
     sync = {k: v for k, v in settings.items() if k in _APP_CONFIG_KEYS}
