@@ -272,6 +272,8 @@ async def manifest():
             {"name": "coffee_label", "type": "string", "required": True,
              "description": "Coffee type label from classifier"},
             {"name": "timestamp", "type": "string", "required": True, "description": "ISO-8601 timestamp of brew"},
+            {"name": "system", "type": "string", "required": False,
+             "description": "System prompt override — falls back to the service LLM_SYSTEM_MESSAGE setting"},
         ],
         "outputs": [
             {"name": "response", "type": "string", "description": "Generated witty comment"},

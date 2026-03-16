@@ -74,6 +74,21 @@ class TestPipelineContext:
         ctx = PipelineContext(sample_sensor_data, sensor_ts)
         assert ctx.resolve_ref("$noDot") is None
 
+    def test_resolve_config_ref(self, sample_sensor_data, sensor_ts):
+        ctx = PipelineContext(sample_sensor_data, sensor_ts)
+        with patch("pipeline_engine.config") as mock_cfg:
+            mock_cfg.get.return_value = "You are a witty coffee commentator."
+            value = ctx.resolve_ref("$config.LLM_SYSTEM_MESSAGE")
+        assert value == "You are a witty coffee commentator."
+        mock_cfg.get.assert_called_once_with("LLM_SYSTEM_MESSAGE")
+
+    def test_resolve_config_ref_missing_key(self, sample_sensor_data, sensor_ts):
+        ctx = PipelineContext(sample_sensor_data, sensor_ts)
+        with patch("pipeline_engine.config") as mock_cfg:
+            mock_cfg.get.return_value = None
+            value = ctx.resolve_ref("$config.NO_SUCH_KEY")
+        assert value is None
+
 
 class TestPipelineEngine:
     @pytest.mark.asyncio
@@ -220,3 +235,42 @@ class TestPipelineEngine:
         ctx.results["classifier"] = {"label": "espresso", "confidence": 0.9}
         summary = engine._build_summary(ctx)
         assert "label" in summary or "steps_completed" in summary
+
+    @pytest.mark.asyncio
+    @patch("pipeline_engine.config")
+    @patch("pipeline_engine.call_service", new_callable=AsyncMock)
+    async def test_config_ref_passed_to_service(self, mock_call, mock_cfg,
+                                                 sample_sensor_data, sensor_ts):
+        """Pipeline resolves $config.LLM_SYSTEM_MESSAGE and sends it in the payload."""
+        mock_cfg.get.return_value = "Custom system prompt"
+        mock_call.return_value = {"response": "Funny comment", "tokens": 10}
+
+        manifest = _make_manifest(
+            "llm",
+            inputs=[
+                {"name": "coffee_label", "type": "string", "required": True, "description": ""},
+                {"name": "system", "type": "string", "required": False, "description": ""},
+            ],
+            outputs=[{"name": "response", "type": "string", "description": ""}],
+        )
+        reg = _make_registry(
+            {"llm": ("http://localhost:8002", manifest)},
+            [PipelineStep(
+                service="llm",
+                input_map={
+                    "coffee_label": "$sensor.timestamp",  # dummy; just needs a value
+                    "system": "$config.LLM_SYSTEM_MESSAGE",
+                },
+            )],
+        )
+        engine = PipelineEngine(reg)
+        ctx = await engine.execute(sample_sensor_data, sensor_ts)
+
+        assert "llm" in ctx.results
+        # Verify the payload sent to call_service included the system prompt
+        call_kwargs = mock_call.call_args
+        payload = call_kwargs.kwargs.get("payload") or call_kwargs[1].get("payload")
+        if payload is None:
+            # positional args: endpoint, method, path, payload
+            payload = call_kwargs[0][3]
+        assert payload["system"] == "Custom system prompt"
