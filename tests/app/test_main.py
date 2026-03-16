@@ -90,20 +90,37 @@ class TestServicesStatus:
 class TestServiceSettingsProxy:
     @pytest.mark.asyncio
     async def test_get_settings_unknown_service(self, client):
+        client["registry"].get = MagicMock(return_value=None)
         resp = await client["client"].get("/api/services/unknown/settings")
         assert resp.status_code == 200
         assert "error" in resp.json()
 
     @pytest.mark.asyncio
     async def test_get_settings_classifier(self, client):
-        client["classifier"].get_settings = AsyncMock(
-            return_value=[{"key": "n_estimators", "value": 200}]
-        )
-        resp = await client["client"].get("/api/services/classifier/settings")
+        from models.manifest import ManifestEndpoint, ManifestEndpoints, ServiceManifest
+        from models.registry import ServiceRegistration
+
+        reg = MagicMock(spec=ServiceRegistration)
+        reg.endpoint = "http://classifier-mock:8001"
+        reg.manifest = MagicMock(spec=ServiceManifest)
+        reg.manifest.endpoints = MagicMock(spec=ManifestEndpoints)
+        reg.manifest.endpoints.settings = ManifestEndpoint(method="GET", path="/settings")
+        client["registry"].get = MagicMock(return_value=reg)
+
+        with patch.object(main_mod.httpx, "AsyncClient") as mock_httpx:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = [{"key": "n_estimators", "value": 200}]
+            mock_resp.raise_for_status = MagicMock()
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value = MagicMock()
+            mock_ctx.__aenter__.return_value.request = AsyncMock(return_value=mock_resp)
+            mock_httpx.return_value = mock_ctx
+            resp = await client["client"].get("/api/services/classifier/settings")
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_patch_settings_unknown(self, client):
+        client["registry"].get = MagicMock(return_value=None)
         resp = await client["client"].patch(
             "/api/services/unknown/settings", json={"settings": {"key": "value"}}
         )
