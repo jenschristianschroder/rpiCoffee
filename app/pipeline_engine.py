@@ -1,8 +1,8 @@
 """Dynamic pipeline engine.
 
 Reads the pipeline configuration from the service registry and executes
-each step sequentially, resolving ``$sensor.*`` and ``$<service>.*``
-input-map references to actual data from previous steps.
+each step sequentially, resolving ``$sensor.*``, ``$config.*``, and
+``$<service>.*`` input-map references to actual data from previous steps.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator
+
+from config import config
 
 from models.manifest import ServiceManifest
 from models.registry import PipelineStep
@@ -45,6 +47,7 @@ class PipelineContext:
         Supported reference forms:
           - ``$sensor.data``       → raw sensor data list
           - ``$sensor.timestamp``  → ISO-formatted sensor timestamp
+          - ``$config.<key>``      → value from the app configuration
           - ``$<service>.<key>``   → output from a previous pipeline step
         """
         if not ref.startswith("$"):
@@ -62,6 +65,9 @@ class PipelineContext:
             if key == "timestamp":
                 return self.sensor_timestamp.isoformat()
             return None
+
+        if source == "config":
+            return config.get(key)
 
         step_result = self.results.get(source)
         if step_result is None:
