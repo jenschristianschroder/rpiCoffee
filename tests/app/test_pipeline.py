@@ -146,6 +146,36 @@ class TestRunPipeline:
         assert "Sensor read failed" in result["error"]
 
     @pytest.mark.asyncio
+    @patch("pipeline.registry")
+    @patch("pipeline.PipelineEngine")
+    @patch("pipeline.read_sensor", new_callable=AsyncMock)
+    @patch("pipeline.mock_sensor")
+    @patch("pipeline.config")
+    async def test_run_pipeline_force_mock_uses_sample_only(
+        self, mock_config, mock_mock_sensor, mock_read_sensor,
+        MockEngine, mock_registry, sample_sensor_data
+    ):
+        """force_mock=True must start mock sensor with sample_only=True."""
+        mock_config.SENSOR_MODE = "serial"  # confirm force_mock overrides config
+        mock_config.DATA_COLLECT_ENABLED = False
+        mock_config.DATA_COLLECT_LABEL = ""
+        mock_mock_sensor.start.return_value = "__mock__"
+        mock_read_sensor.return_value = sample_sensor_data
+
+        engine_instance = MockEngine.return_value
+        engine_instance.execute = AsyncMock(return_value=MagicMock(
+            results={}, errors={}, skipped=[], halted=False,
+        ))
+        engine_instance._build_summary.return_value = {
+            "steps_completed": [], "steps_skipped": [],
+            "label": None, "confidence": None, "text": None, "audio_url": None, "error": None,
+        }
+
+        result = await run_pipeline(sensor_data=None, force_mock=True)
+        mock_mock_sensor.start.assert_called_once_with(sample_only=True)
+        assert "sensor" in result["steps_completed"]
+
+    @pytest.mark.asyncio
     @patch("pipeline.save_recording", return_value="/data/training/espresso/x.csv")
     @patch("pipeline.config")
     async def test_run_pipeline_data_collect_mode(self, mock_config, mock_save, sample_sensor_data):
@@ -269,3 +299,42 @@ class TestRunPipelineStreaming:
         # Should have data_collected event and result event
         combined = "".join(events)
         assert "data_collected" in combined
+
+    @pytest.mark.asyncio
+    @patch("pipeline.registry")
+    @patch("pipeline.PipelineEngine")
+    @patch("pipeline.read_sensor_streaming")
+    @patch("pipeline.mock_sensor")
+    @patch("pipeline.config")
+    async def test_streaming_force_mock_uses_sample_only(
+        self, mock_config, mock_mock_sensor, mock_read_stream,
+        MockEngine, mock_registry, sample_sensor_data
+    ):
+        """force_mock=True must start mock sensor with sample_only=True."""
+        mock_config.SENSOR_MODE = "serial"  # confirm force_mock overrides config
+        mock_config.DATA_COLLECT_ENABLED = False
+        mock_config.DATA_COLLECT_LABEL = ""
+        mock_mock_sensor.start.return_value = "__mock__"
+
+        async def fake_stream(port=None):
+            yield sample_sensor_data
+
+        mock_read_stream.side_effect = fake_stream
+
+        engine_instance = MockEngine.return_value
+
+        async def fake_execute_streaming(data, now):
+            yield {"event": "pipeline_complete", "data": {
+                "steps_completed": ["classifier"], "steps_skipped": [],
+                "label": "espresso", "confidence": 0.95,
+                "text": None, "audio_url": None, "error": None,
+            }}
+
+        engine_instance.execute_streaming = fake_execute_streaming
+
+        events = []
+        async for sse in run_pipeline_streaming(force_mock=True, skip_save=True):
+            events.append(sse)
+
+        mock_mock_sensor.start.assert_called_once_with(sample_only=True)
+        assert any("result" in e for e in events)

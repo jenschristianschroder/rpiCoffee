@@ -202,6 +202,17 @@ function addSensorNode() {
         + '</div>';
     const nodeId = editor.addNode('sensor', 0, 2, 50, 100, 'sensor-node', {}, html);
     _editorNodeMap[nodeId] = '$sensor';
+
+    // Add tooltips to output port elements
+    const sensorOutputLabels = ['data (array)', 'timestamp (string)'];
+    const sensorNodeEl = editorContainer.querySelector('#node-' + nodeId);
+    if (sensorNodeEl) {
+        sensorOutputLabels.forEach(function(label, idx) {
+            const port = sensorNodeEl.querySelector('.output_' + (idx + 1));
+            if (port) port.title = label;
+        });
+    }
+
     return nodeId;
 }
 
@@ -237,6 +248,22 @@ function addServiceNode(svc, posX, posY) {
 
     const nodeId = editor.addNode(svc.name, numInputs, numOutputs, posX || 300, posY || 150, '', { service: svc.name, on_failure: 'skip' }, html);
     _editorNodeMap[nodeId] = svc.name;
+
+    // Add tooltips to input and output port elements
+    if (m) {
+        const svcNodeEl = editorContainer.querySelector('#node-' + nodeId);
+        if (svcNodeEl) {
+            m.inputs.forEach(function(inp, idx) {
+                const port = svcNodeEl.querySelector('.input_' + (idx + 1));
+                if (port) port.title = inp.name + ' (' + inp.type + ')' + (inp.required ? ' — required' : '');
+            });
+            m.outputs.forEach(function(out, idx) {
+                const port = svcNodeEl.querySelector('.output_' + (idx + 1));
+                if (port) port.title = out.name + ' (' + out.type + ')';
+            });
+        }
+    }
+
     return nodeId;
 }
 
@@ -445,8 +472,14 @@ async function validatePipelineEditor() {
     statusEl.textContent = 'Validating…';
     statusEl.style.color = 'var(--pico-muted-color)';
 
+    const steps = serializePipeline();
+
     try {
-        const r = await fetch('/api/registry/pipeline/validate', { method: 'POST' });
+        const r = await fetch('/api/registry/pipeline/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pipeline: steps })
+        });
         const data = await r.json();
         if (data.valid) {
             statusEl.textContent = '✓ Pipeline is valid';

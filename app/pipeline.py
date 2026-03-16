@@ -44,6 +44,7 @@ def _sse(event: str, data: Any) -> str:
 async def run_pipeline(
     sensor_data: list[dict[str, float]] | None = None,
     on_progress: Any | None = None,
+    force_mock: bool = False,
 ) -> dict[str, Any]:
     """
     Run the full brew pipeline and return a result dict.
@@ -53,6 +54,10 @@ async def run_pipeline(
     sensor_data : list of dicts, optional
         Pre-collected sensor data (e.g. from auto-trigger streaming).
         When provided the sensor-read step is skipped.
+    force_mock : bool
+        When True, always use the mock sensor regardless of
+        ``config.SENSOR_MODE``.  Restricts file selection to
+        ``*.csv.sample`` files so recorded training data is not replayed.
 
     Returns
     -------
@@ -72,8 +77,8 @@ async def run_pipeline(
     try:
         if sensor_data is None:
             port = None
-            if config.SENSOR_MODE == "mock":
-                port = mock_sensor.start()
+            if force_mock or config.SENSOR_MODE == "mock":
+                port = mock_sensor.start(sample_only=force_mock)
                 logger.info("Using mock sensor on %s", port)
 
             sensor_data = await read_sensor(port=port)
@@ -144,7 +149,7 @@ async def run_pipeline_streaming(
     try:
         port = None
         if force_mock or config.SENSOR_MODE == "mock":
-            port = mock_sensor.start()
+            port = mock_sensor.start(sample_only=force_mock)
             logger.info("Using mock sensor on %s", port)
 
         async for batch in read_sensor_streaming(port=port):
