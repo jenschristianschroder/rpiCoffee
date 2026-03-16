@@ -119,12 +119,97 @@ class TestServiceSettingsProxy:
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_get_settings_connect_error(self, client):
+        """ConnectError shows the unreachable endpoint in the message."""
+        from models.manifest import ManifestEndpoint, ManifestEndpoints, ServiceManifest
+        from models.registry import ServiceRegistration
+
+        reg = MagicMock(spec=ServiceRegistration)
+        reg.endpoint = "http://llm-mock:8002"
+        reg.manifest = MagicMock(spec=ServiceManifest)
+        reg.manifest.endpoints = MagicMock(spec=ManifestEndpoints)
+        reg.manifest.endpoints.settings = ManifestEndpoint(method="GET", path="/settings")
+        client["registry"].get = MagicMock(return_value=reg)
+
+        with patch.object(main_mod.httpx, "AsyncClient") as mock_httpx:
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value = MagicMock()
+            mock_ctx.__aenter__.return_value.request = AsyncMock(
+                side_effect=httpx.ConnectError("Connection refused")
+            )
+            mock_httpx.return_value = mock_ctx
+            resp = await client["client"].get("/api/services/llm/settings")
+        data = resp.json()
+        assert "error" in data
+        assert "not reachable" in data["error"]
+        assert "llm-mock:8002" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_settings_http_error(self, client):
+        """HTTP errors include status code and detail from the upstream."""
+        from models.manifest import ManifestEndpoint, ManifestEndpoints, ServiceManifest
+        from models.registry import ServiceRegistration
+
+        reg = MagicMock(spec=ServiceRegistration)
+        reg.endpoint = "http://llm-mock:8002"
+        reg.manifest = MagicMock(spec=ServiceManifest)
+        reg.manifest.endpoints = MagicMock(spec=ManifestEndpoints)
+        reg.manifest.endpoints.settings = ManifestEndpoint(method="GET", path="/settings")
+        client["registry"].get = MagicMock(return_value=reg)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = '{"detail": "Not Found"}'
+        mock_response.json.return_value = {"detail": "Not Found"}
+        error = httpx.HTTPStatusError(
+            "404 Not Found", request=MagicMock(), response=mock_response
+        )
+
+        with patch.object(main_mod.httpx, "AsyncClient") as mock_httpx:
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value = MagicMock()
+            mock_ctx.__aenter__.return_value.request = AsyncMock(side_effect=error)
+            mock_httpx.return_value = mock_ctx
+            resp = await client["client"].get("/api/services/llm/settings")
+        data = resp.json()
+        assert "error" in data
+        assert "HTTP 404" in data["error"]
+        assert "Not Found" in data["error"]
+
+    @pytest.mark.asyncio
     async def test_patch_settings_unknown(self, client):
         client["registry"].get = MagicMock(return_value=None)
         resp = await client["client"].patch(
             "/api/services/unknown/settings", json={"settings": {"key": "value"}}
         )
         assert "error" in resp.json()
+
+    @pytest.mark.asyncio
+    async def test_patch_settings_connect_error(self, client):
+        """PATCH ConnectError shows the unreachable endpoint."""
+        from models.manifest import ManifestEndpoint, ManifestEndpoints, ServiceManifest
+        from models.registry import ServiceRegistration
+
+        reg = MagicMock(spec=ServiceRegistration)
+        reg.endpoint = "http://llm-mock:8002"
+        reg.manifest = MagicMock(spec=ServiceManifest)
+        reg.manifest.endpoints = MagicMock(spec=ManifestEndpoints)
+        reg.manifest.endpoints.update_settings = ManifestEndpoint(method="PATCH", path="/settings")
+        client["registry"].get = MagicMock(return_value=reg)
+
+        with patch.object(main_mod.httpx, "AsyncClient") as mock_httpx:
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value = MagicMock()
+            mock_ctx.__aenter__.return_value.request = AsyncMock(
+                side_effect=httpx.ConnectError("Connection refused")
+            )
+            mock_httpx.return_value = mock_ctx
+            resp = await client["client"].patch(
+                "/api/services/llm/settings", json={"settings": {"key": "val"}}
+            )
+        data = resp.json()
+        assert "error" in data
+        assert "not reachable" in data["error"]
 
 
 class TestDataCollectAPI:
