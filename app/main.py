@@ -17,6 +17,7 @@ from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import httpx
 from pipeline import run_pipeline, run_pipeline_streaming
 from registry import registry
 from services.classifier_client import ClassifierClient
@@ -513,39 +514,51 @@ async def services_status():
 
 
 # ── Service settings proxy API ───────────────────────────────────
+# Uses the service registry to discover endpoints dynamically, so the
+# proxy works for any registered service without hardcoded client classes.
 
-_SERVICE_CLIENTS = {
-    "classifier": ClassifierClient,
-    "llm": LLMClient,
-    "llm-mock": MockLLMClient,
-    "llm-ollama": OllamaClient,
-    "tts": TTSClient,
-    "remote-save": RemoteSaveClient,
-}
+_SETTINGS_TIMEOUT = 5.0
 
 
 @app.get("/api/services/{name}/settings")
 async def service_settings_get(name: str):
-    """Proxy GET /settings to the named backend service."""
-    client = _SERVICE_CLIENTS.get(name)
-    if client is None:
+    """Proxy GET /settings to the named backend service via registry."""
+    reg = registry.get(name)
+    if reg is None:
         return {"error": f"Unknown service: {name}"}
-    result = await client.get_settings()
-    if result is None:
+    if not reg.manifest or not reg.manifest.endpoints.settings:
+        return {"error": f"Service {name} does not expose a settings endpoint"}
+    ep = reg.manifest.endpoints.settings
+    url = f"{reg.endpoint}{ep.path}"
+    try:
+        async with httpx.AsyncClient(timeout=_SETTINGS_TIMEOUT) as client:
+            resp = await client.request(ep.method, url)
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        logger.error("Failed to fetch settings from %s (%s): %s", name, url, exc)
         return {"error": f"Failed to fetch settings from {name}"}
-    return result
 
 
 @app.patch("/api/services/{name}/settings")
 async def service_settings_update(name: str, request: Request):
-    """Proxy PATCH /settings to the named backend service."""
-    client = _SERVICE_CLIENTS.get(name)
-    if client is None:
+    """Proxy PATCH /settings to the named backend service via registry."""
+    reg = registry.get(name)
+    if reg is None:
         return {"error": f"Unknown service: {name}"}
+    if not reg.manifest or not reg.manifest.endpoints.update_settings:
+        return {"error": f"Service {name} does not expose a settings update endpoint"}
+    ep = reg.manifest.endpoints.update_settings
+    url = f"{reg.endpoint}{ep.path}"
     body = await request.json()
     settings = body.get("settings", body)
-    result = await client.update_settings(settings)
-    if result is None:
+    try:
+        async with httpx.AsyncClient(timeout=_SETTINGS_TIMEOUT) as client:
+            resp = await client.request(ep.method, url, json={"settings": settings})
+            resp.raise_for_status()
+            result = resp.json()
+    except Exception as exc:
+        logger.error("Failed to update settings on %s (%s): %s", name, url, exc)
         return {"error": f"Failed to update settings on {name}"}
     # Sync any keys that also exist in app config
     _APP_CONFIG_KEYS = {"LLM_BACKEND", "LLM_MODEL", "LLM_KEEP_ALIVE"}
