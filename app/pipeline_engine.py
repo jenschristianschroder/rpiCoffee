@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from config import config
-
 from models.manifest import ServiceManifest
 from models.registry import PipelineStep
 from pipeline_executor import ServiceCallError, call_service
