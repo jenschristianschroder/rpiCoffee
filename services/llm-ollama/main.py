@@ -183,7 +183,7 @@ def _tts_clean(text: str) -> str:
 # ── Request / Response models ────────────────────────────────────
 
 class GenerateRequest(BaseModel):
-    prompt: str | None = Field(None, min_length=1)
+    prompt: str | None = Field(None)
     coffee_label: str | None = Field(None, description="Coffee type label — builds prompt automatically")
     timestamp: str | None = Field(None, description="ISO-8601 timestamp — used with coffee_label")
     system: str | None = None
@@ -308,7 +308,7 @@ async def health():
 @app.post("/generate")
 async def generate(req: GenerateRequest):
     # Accept either a raw prompt or structured coffee_label + timestamp
-    user_msg = req.prompt
+    user_msg = (req.prompt or "").strip() or None
     if not user_msg:
         if req.coffee_label:
             ts = req.timestamp or datetime.now().astimezone().isoformat()
