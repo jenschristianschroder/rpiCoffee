@@ -184,7 +184,7 @@ class TestServiceRegistry:
 
         # Validate with a correct pipeline passed directly — should have no issues
         issues = reg.validate_pipeline(steps=[
-            PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"})
+            PipelineStep(service="classifier", input_map={"data": "$sensor.data"})
         ])
         assert issues == []
 
@@ -196,14 +196,14 @@ class TestServiceRegistry:
         )
         # Stored pipeline is valid …
         reg.set_pipeline([PipelineStep(
-            service="classifier", input_map={"sensor_data": "$sensor.data"}
+            service="classifier", input_map={"data": "$sensor.data"}
         )])
 
         # … but the supplied steps have a missing required input
         issues = reg.validate_pipeline(steps=[
             PipelineStep(service="classifier", input_map={})
         ])
-        assert any("required input 'sensor_data' is not mapped" in i for i in issues)
+        assert any("required input 'data' is not mapped" in i for i in issues)
 
     def test_persistence_roundtrip(self, reg, tmp_path, manifest_dict):
         manifest = ServiceManifest.model_validate(manifest_dict)
