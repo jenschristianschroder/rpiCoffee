@@ -81,7 +81,7 @@ class TestPipelineEngine:
     async def test_execute_happy_path(self, mock_call, sample_sensor_data, sensor_ts):
         manifest = _make_manifest(
             "classifier",
-            inputs=[{"name": "sensor_data", "type": "array", "required": True, "description": ""}],
+            inputs=[{"name": "data", "type": "array", "required": True, "description": ""}],
             outputs=[{"name": "label", "type": "string", "description": ""},
                      {"name": "confidence", "type": "float", "description": ""}],
         )
@@ -89,7 +89,7 @@ class TestPipelineEngine:
 
         reg = _make_registry(
             {"classifier": ("http://localhost:8001", manifest)},
-            [PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"})],
+            [PipelineStep(service="classifier", input_map={"data": "$sensor.data"})],
         )
         engine = PipelineEngine(reg)
         ctx = await engine.execute(sample_sensor_data, sensor_ts)
@@ -117,11 +117,11 @@ class TestPipelineEngine:
         mock_call.side_effect = ServiceCallError("svc", "timeout")
 
         manifest = _make_manifest("classifier",
-            inputs=[{"name": "sensor_data", "type": "array", "required": True, "description": ""}],
+            inputs=[{"name": "data", "type": "array", "required": True, "description": ""}],
             outputs=[])
         reg = _make_registry(
             {"classifier": ("http://localhost:8001", manifest)},
-            [PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"}, on_failure="skip")],
+            [PipelineStep(service="classifier", input_map={"data": "$sensor.data"}, on_failure="skip")],
         )
         engine = PipelineEngine(reg)
         ctx = await engine.execute(sample_sensor_data, sensor_ts)
@@ -135,7 +135,7 @@ class TestPipelineEngine:
         mock_call.side_effect = ServiceCallError("svc", "timeout")
 
         manifest = _make_manifest("classifier",
-            inputs=[{"name": "sensor_data", "type": "array", "required": True, "description": ""}],
+            inputs=[{"name": "data", "type": "array", "required": True, "description": ""}],
             outputs=[])
         second_manifest = _make_manifest("llm", [], [])
         reg = _make_registry(
@@ -144,7 +144,7 @@ class TestPipelineEngine:
                 "llm": ("http://localhost:8002", second_manifest),
             },
             [
-                PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"}, on_failure="halt"),
+                PipelineStep(service="classifier", input_map={"data": "$sensor.data"}, on_failure="halt"),
                 PipelineStep(service="llm"),
             ],
         )
@@ -163,11 +163,11 @@ class TestPipelineEngine:
             {"label": "espresso", "confidence": 0.9},
         ]
         manifest = _make_manifest("classifier",
-            inputs=[{"name": "sensor_data", "type": "array", "required": True, "description": ""}],
+            inputs=[{"name": "data", "type": "array", "required": True, "description": ""}],
             outputs=[{"name": "label", "type": "string", "description": ""}])
         reg = _make_registry(
             {"classifier": ("http://localhost:8001", manifest)},
-            [PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"},
+            [PipelineStep(service="classifier", input_map={"data": "$sensor.data"},
                           on_failure="retry", retry_count=3)],
         )
         engine = PipelineEngine(reg)
@@ -193,12 +193,12 @@ class TestPipelineEngine:
     async def test_execute_streaming_yields_events(self, mock_call, sample_sensor_data, sensor_ts):
         mock_call.return_value = {"label": "espresso", "confidence": 0.9}
         manifest = _make_manifest("classifier",
-            inputs=[{"name": "sensor_data", "type": "array", "required": True, "description": ""}],
+            inputs=[{"name": "data", "type": "array", "required": True, "description": ""}],
             outputs=[{"name": "label", "type": "string", "description": ""},
                      {"name": "confidence", "type": "float", "description": ""}])
         reg = _make_registry(
             {"classifier": ("http://localhost:8001", manifest)},
-            [PipelineStep(service="classifier", input_map={"sensor_data": "$sensor.data"})],
+            [PipelineStep(service="classifier", input_map={"data": "$sensor.data"})],
         )
         engine = PipelineEngine(reg)
         events = []

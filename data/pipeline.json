@@ -9,7 +9,7 @@
         "description": "Coffee type classifier using scikit-learn RandomForest",
         "inputs": [
           {
-            "name": "sensor_data",
+            "name": "data",
             "type": "array",
             "required": true,
             "description": "6-axis IMU sensor readings"
