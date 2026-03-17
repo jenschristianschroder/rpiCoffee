@@ -54,8 +54,10 @@ mkdir -p "$SCRIPT_DIR/app/data/training" "$SCRIPT_DIR/app/data/models" "$SCRIPT_
 
 if [[ -n "$PROFILES" ]]; then
     info "Starting Docker services..."
+    # BuildKit uses content checksums (not timestamps) for COPY cache
+    # invalidation, preventing stale images after git pull.
     # shellcheck disable=SC2086
-    docker compose $PROFILES up -d --build
+    DOCKER_BUILDKIT=1 docker compose $PROFILES up -d --build --force-recreate
 
     # ── Health-check loop (Docker-managed services only) ────────
     declare -A SVC_HEALTH

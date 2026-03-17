@@ -575,7 +575,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${SCRIPT_DIR}
-ExecStart=/usr/bin/docker compose ${PROFILES} up -d --build
+Environment=DOCKER_BUILDKIT=1
+ExecStart=/usr/bin/docker compose ${PROFILES} up -d --build --force-recreate
 ExecStop=/usr/bin/docker compose ${PROFILES} down
 User=${USER}
 TimeoutStartSec=0
