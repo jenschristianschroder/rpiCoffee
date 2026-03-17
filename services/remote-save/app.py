@@ -129,6 +129,7 @@ _SETTINGS_REGISTRY: list[dict[str, Any]] = [
 
 # Set of keys whose values must never appear in GET /settings responses.
 _SECRET_KEYS: set[str] = {e["key"] for e in _SETTINGS_REGISTRY if e.get("secret")}
+_SECRET_MASK: str = "***set***"
 
 # Default values for optional settings (column name overrides).
 _DEFAULTS: dict[str, str] = {
@@ -516,7 +517,7 @@ def get_settings():
         key = entry["key"]
         raw = _runtime.get(key, "")
         if key in _SECRET_KEYS:
-            value = "***set***" if raw else ""
+            value = _SECRET_MASK if raw else ""
         else:
             value = raw
         result.append({**entry, "value": value})
@@ -543,6 +544,12 @@ def update_settings(req: SettingsUpdate):
     updated = []
     for key, value in req.settings.items():
         if key not in _VALID_SETTING_KEYS:
+            continue
+        # Never overwrite a real secret with the masked placeholder that
+        # GET /settings returns.  The admin panel sends all fields back
+        # (including the placeholder) when the user saves — without this
+        # guard the real credential is replaced by the literal "***set***".
+        if key in _SECRET_KEYS and str(value) == _SECRET_MASK:
             continue
         _runtime[key] = str(value)
         updated.append(key)

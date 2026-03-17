@@ -181,6 +181,25 @@ class TestSettings:
         assert "UNKNOWN_KEY" not in resp.json()["updated"]
 
     @pytest.mark.asyncio
+    async def test_patch_masked_placeholder_does_not_overwrite_secret(self, client):
+        """PATCH with the masked placeholder '***set***' must not overwrite the real secret.
+
+        This reproduces the admin-panel round-trip bug where GET /settings
+        returns '***set***' for secrets, the JS sends it back in PATCH, and
+        the real credential is replaced by the literal placeholder.
+        """
+        svc = _import_svc_app()
+        real_secret = svc._runtime["DATAVERSE_CLIENT_SECRET"]
+        assert real_secret and real_secret != "***set***"
+
+        resp = await client.patch("/settings", json={"settings": {
+            "DATAVERSE_CLIENT_SECRET": "***set***",
+        }})
+        assert resp.status_code == 200
+        assert "DATAVERSE_CLIENT_SECRET" not in resp.json()["updated"]
+        assert svc._runtime["DATAVERSE_CLIENT_SECRET"] == real_secret
+
+    @pytest.mark.asyncio
     async def test_switch_environment_and_app_reg_via_settings(self, client):
         """End-to-end: switch both Dataverse env and Azure app reg via PATCH /settings.
 

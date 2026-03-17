@@ -1816,6 +1816,9 @@ function renderSettingsForm(container, svc, settings) {
         settings.forEach(function(s) {
             var input = form.querySelector('[name="' + s.key + '"]');
             if (!input) return;
+            // Never send the masked placeholder back for secret fields —
+            // doing so would overwrite the real credential with "***set***".
+            if (s.secret && input.value === '***set***') return;
             if (s.type === 'bool') {
                 payload[s.key] = input.checked;
             } else if (s.type === 'float') {
