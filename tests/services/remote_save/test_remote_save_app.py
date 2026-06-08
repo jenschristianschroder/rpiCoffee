@@ -73,6 +73,13 @@ def test_save_with_sensor_data(client, mock_dataverse):
     # sensor_data triggers auto CSV → upload_file is called
     mock_dataverse["upload_file"].assert_called_once()
 
+    # The auto-generated CSV must be included in the record's data column
+    call_kwargs = mock_dataverse["create_record"].call_args
+    record_data = call_kwargs.kwargs.get("record_data") or call_kwargs[1].get("record_data")
+    data_value = record_data.get("test_data", "")
+    assert "acc_x" in data_value, "data column should contain CSV from sensor_data"
+    assert "black" in data_value, "CSV rows should include the coffee label"
+
 
 def test_save_all_coffee_types(client, save_payload, mock_dataverse):
     """Verify all three coffee types are accepted (case-insensitive)."""

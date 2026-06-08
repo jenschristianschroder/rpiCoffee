@@ -408,10 +408,21 @@ def save(req: SaveRequest) -> SaveResponse:
     coffee_type_value = COFFEE_TYPE_MAP[coffee_key]
     logger.info("Mapped coffee_type '%s' -> %d", coffee_key, coffee_type_value)
 
+    # Auto-generate CSV from sensor_data when the caller didn't supply an
+    # explicit ``data`` field (the pipeline sends ``sensor_data`` but not ``data``).
+    data_field = req.data
+    file_content = req.file_content
+    file_name = req.file_name
+    if not data_field and req.sensor_data:
+        csv_str = _sensor_data_to_csv(req.sensor_data, coffee_key)
+        data_field = csv_str
+        file_content = base64.b64encode(csv_str.encode("utf-8")).decode("ascii")
+        file_name = file_name or f"{req.name}.csv"
+
     # Build record payload
     record_payload: dict[str, Any] = dict(req.record_data) if req.record_data else {}
     record_payload.setdefault(col_name, req.name)
-    record_payload.setdefault(col_data, req.data)
+    record_payload.setdefault(col_data, data_field)
     record_payload.setdefault(col_text, req.text)
     record_payload.setdefault(col_confidence, req.confidence)
     record_payload.setdefault(col_coffee_type, coffee_type_value)
@@ -444,19 +455,7 @@ def save(req: SaveRequest) -> SaveResponse:
             detail=f"Failed to create Dataverse record: {exc}",
         ) from exc
 
-    # Upload file content if provided (or auto-generate from sensor_data)
-    file_content = req.file_content
-    file_name = req.file_name
-
-    if not file_content and req.sensor_data:
-        csv_str = _sensor_data_to_csv(req.sensor_data, coffee_key)
-        data_field = csv_str  # also store CSV in the data column
-        file_content = base64.b64encode(csv_str.encode("utf-8")).decode("ascii")
-        file_name = file_name or f"{req.name}.csv"
-        # Update data column with CSV if it was empty
-        if not req.data:
-            record_payload[col_data] = data_field
-
+    # Upload file content if provided (or auto-generated from sensor_data above)
     if file_content:
         file_name = file_name or f"{req.name}.txt"
         try:
