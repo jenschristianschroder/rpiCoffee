@@ -140,4 +140,13 @@ echo -e "  ${BOLD}Admin UI:${NC}  http://${PI_IP}:${APP_PORT:-8080}/admin/"
 echo ""
 
 cd app
-exec uvicorn main:app --host 0.0.0.0 --port "${APP_PORT:-8080}"
+
+# Kill any stale process on the app port to avoid "address already in use"
+APP_PORT="${APP_PORT:-8080}"
+if command -v fuser &>/dev/null; then
+    fuser -k "${APP_PORT}/tcp" 2>/dev/null || true
+elif command -v lsof &>/dev/null; then
+    lsof -ti :"${APP_PORT}" 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+fi
+
+exec uvicorn main:app --host 0.0.0.0 --port "${APP_PORT}"
