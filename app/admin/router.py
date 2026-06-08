@@ -75,7 +75,7 @@ def _make_session_token() -> str:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error, "config": config.to_dict()})
+    return templates.TemplateResponse(request, "login.html", {"error": error, "config": config.to_dict()})
 
 
 @router.post("/login")
@@ -88,7 +88,7 @@ async def login_submit(request: Request, password: str = Form(...)):
         return response
     logger.warning("Admin login failed – wrong password")
     return templates.TemplateResponse(
-        "login.html", {"request": request, "error": "Invalid password", "config": config.to_dict()}
+        request, "login.html", {"error": "Invalid password", "config": config.to_dict()}
     )
 
 
@@ -111,8 +111,7 @@ async def dashboard(request: Request, session: str | None = Cookie(default=None)
     cfg.pop("SECRET_KEY", None)
     cfg.pop("ADMIN_PASSWORD_HASH", None)
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "config": cfg,
         "editable_keys": _EDITABLE_KEYS,
         "bool_keys": _BOOL_KEYS,
@@ -128,8 +127,7 @@ async def pipeline_editor(request: Request, session: str | None = Cookie(default
     if not _verify_session_fresh(session):
         return RedirectResponse(url="/admin/login", status_code=303)
 
-    return templates.TemplateResponse("pipeline_editor.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "pipeline_editor.html", {
         "config": config.to_dict(),
     })
 
