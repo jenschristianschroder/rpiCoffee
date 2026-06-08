@@ -27,10 +27,10 @@ set -a; source .env; set +a
 
 # ── Build profile flags ─────────────────────────────────────────
 PROFILES=""
-[[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && PROFILES="$PROFILES --profile classifier"
-[[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && PROFILES="$PROFILES --profile llm"
-[[ "${TTS_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile tts"
-[[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && PROFILES="$PROFILES --profile remote-save"
+[[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && PROFILES="$PROFILES --profile classifier" || true
+[[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && PROFILES="$PROFILES --profile llm" || true
+[[ "${TTS_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile tts" || true
+[[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && PROFILES="$PROFILES --profile remote-save" || true
 
 # ── Cleanup trap ─────────────────────────────────────────────────
 cleanup() {
@@ -61,10 +61,10 @@ if [[ -n "$PROFILES" ]]; then
 
     # ── Health-check loop (Docker-managed services only) ────────
     declare -A SVC_HEALTH
-    [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health"
-    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8002}/health"
-    [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health"
-    [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health"
+    [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health" || true
+    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8002}/health" || true
+    [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health" || true
+    [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health" || true
 
     for svc in "${!SVC_HEALTH[@]}"; do
         url="${SVC_HEALTH[$svc]}"
@@ -72,7 +72,7 @@ if [[ -n "$PROFILES" ]]; then
         TRIES=0
         MAX_TRIES=60
         while ! curl -sf --max-time 2 "$url" > /dev/null 2>&1; do
-            ((TRIES++))
+            TRIES=$((TRIES + 1))
             if (( TRIES >= MAX_TRIES )); then
                 echo ""
                 fail "$svc did not become healthy after ${MAX_TRIES}×2s"
@@ -104,7 +104,7 @@ if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollam
     echo -n "  Waiting for ollama (${LLM_URL}) "
     TRIES=0; MAX_TRIES=30
     while ! curl -sf --max-time 2 "${LLM_URL}/api/tags" > /dev/null 2>&1; do
-        ((TRIES++))
+        TRIES=$((TRIES + 1))
         if (( TRIES >= MAX_TRIES )); then
             echo ""
             fail "ollama did not respond at ${LLM_URL}/api/tags after ${MAX_TRIES}×2s"
