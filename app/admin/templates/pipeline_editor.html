@@ -132,6 +132,12 @@ const editor = new Drawflow(editorContainer);
 editor.reroute = true;
 editor.start();
 
+// Keep _editorNodeMap in sync when nodes are removed from the canvas
+editor.on('nodeRemoved', function(nodeId) {
+    delete _editorNodeMap[nodeId];
+    delete _editorNodeMap[String(nodeId)];
+});
+
 // Zoom controls
 editor.zoom_max = 2;
 editor.zoom_min = 0.3;
@@ -316,7 +322,13 @@ function serializePipeline() {
                     const conn = connections[0];  // Take first connection
                     const sourceNodeId = conn.node;
                     const sourceOutputKey = conn.output;
-                    const sourceName = _editorNodeMap[sourceNodeId];
+                    const sourceName = _editorNodeMap[sourceNodeId] || _editorNodeMap[String(sourceNodeId)];
+
+                    if (!sourceName) {
+                        // Source node was deleted or not tracked — skip this connection
+                        inputIdx++;
+                        continue;
+                    }
 
                     // Determine input name from manifest
                     const inputName = manifest && manifest.inputs[inputIdx] ? manifest.inputs[inputIdx].name : 'input_' + inputIdx;
