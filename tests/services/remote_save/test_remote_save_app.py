@@ -7,6 +7,10 @@ Dataverse API calls are mocked — no real credentials required.
 from __future__ import annotations
 
 import base64
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
 
 
 # ── Health & manifest ────────────────────────────────────────────────────────
@@ -81,12 +85,31 @@ def test_save_with_sensor_data(client, mock_dataverse):
     assert "black" in data_value, "CSV rows should include the coffee label"
 
 
-def test_save_all_coffee_types(client, save_payload, mock_dataverse):
-    """Verify all three coffee types are accepted (case-insensitive)."""
-    for coffee_type in ["Black", "ESPRESSO", "cappuccino"]:
-        save_payload["coffee_type"] = coffee_type
-        resp = client.post("/save", json=save_payload)
-        assert resp.status_code == 200, f"Failed for coffee_type={coffee_type}"
+@pytest.mark.parametrize(
+    ("coffee_type", "expected_value"),
+    [
+        ("Black", 737200000),
+        ("ESPRESSO", 737200001),
+        ("cappuccino", 737200002),
+        ("other", 483220001),
+        ("Other", 483220001),
+        (" OTHER ", 483220001),
+    ],
+)
+def test_save_all_coffee_types(
+    client: TestClient,
+    save_payload: dict[str, object],
+    mock_dataverse: dict[str, MagicMock],
+    coffee_type: str,
+    expected_value: int,
+) -> None:
+    """Supported labels map to the exact Dataverse choice values."""
+    save_payload["coffee_type"] = coffee_type
+    resp = client.post("/save", json=save_payload)
+    assert resp.status_code == 200
+    mock_dataverse["create_record"].assert_called_once()
+    record_data = mock_dataverse["create_record"].call_args.kwargs["record_data"]
+    assert record_data["test_type"] == expected_value
 
 
 def test_save_with_record_data(client, save_payload, mock_dataverse):

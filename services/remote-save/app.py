@@ -44,6 +44,7 @@ COFFEE_TYPE_MAP: dict[str, int] = {
     "black": 737200000,
     "espresso": 737200001,
     "cappuccino": 737200002,
+    "other": 483220001,
 }
 
 app = FastAPI(
@@ -219,7 +220,7 @@ class SaveRequest(BaseModel):
     confidence: float = Field(0.0, description="Classification confidence score")
     coffee_type: str = Field(
         ...,
-        description="Coffee type (Black, Espresso, or Cappuccino)",
+        description="Coffee type (Black, Espresso, Cappuccino, or Other)",
     )
     sensor_data: list[dict[str, Any]] | None = Field(
         None,

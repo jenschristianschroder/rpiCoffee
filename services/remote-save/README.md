@@ -101,7 +101,7 @@ Creates a new record in the configured Dataverse table. Optionally uploads binar
 | `data` | `string` | **Yes** | Data content → mapped to `jenssch_data` |
 | `text` | `string` | **Yes** | Text content → mapped to `jenssch_text` |
 | `confidence` | `float` | **Yes** | Classification confidence score → mapped to `jenssch_confidence` |
-| `coffee_type` | `string` | **Yes** | Coffee type (`Black`, `Espresso`, or `Cappuccino`) → converted to int and mapped to `jenssch_coffeetype` |
+| `coffee_type` | `string` | **Yes** | Coffee type (`Black`, `Espresso`, `Cappuccino`, or `Other`) → converted to int and mapped to `jenssch_type` by default |
 | `file_content` | `string` | No | Base64-encoded file bytes to upload to the file column |
 | `file_name` | `string` | No | Filename for the upload (defaults to `<name>.txt`) |
 | `record_data` | `object` | No | Additional key-value pairs merged into the new record |
@@ -114,7 +114,7 @@ Creates a new record in the configured Dataverse table. Optionally uploads binar
 | `data` | `jenssch_data` | `DATAVERSE_COL_DATA` |
 | `text` | `jenssch_text` | `DATAVERSE_COL_TEXT` |
 | `confidence` | `jenssch_confidence` | `DATAVERSE_COL_CONFIDENCE` |
-| `coffee_type` | `jenssch_coffeetype` | `DATAVERSE_COL_COFFEE_TYPE` |
+| `coffee_type` | `jenssch_type` | `DATAVERSE_COL_COFFEE_TYPE` |
 
 #### Coffee Type Values
 
@@ -123,6 +123,11 @@ Creates a new record in the configured Dataverse table. Optionally uploads binar
 | `Black` | `737200000` |
 | `Espresso` | `737200001` |
 | `Cappuccino` | `737200002` |
+| `Other` | `483220001` |
+
+Inputs are case-insensitive and surrounding whitespace is ignored. The classifier
+returns `other` for low-confidence predictions. The Dataverse coffee-type choice
+must include an **Other** option with value `483220001` for these results to save.
 
 #### Example Request
 
