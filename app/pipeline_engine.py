@@ -22,6 +22,8 @@ from registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
 
+_COMMENT_SERVICES = ("llm", "llm-ollama", "coffee-comments")
+
 AUDIO_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent / "data"))) / "audio"
 
 
@@ -306,7 +308,7 @@ class PipelineEngine:
                 "event": "classify",
                 "data": {"label": result["label"], "confidence": result.get("confidence")},
             })
-        elif service_name in ("llm", "llm-ollama") and "response" in result:
+        elif service_name in _COMMENT_SERVICES and "response" in result:
             events.append({"event": "text", "data": {"text": result["response"]}})
         elif service_name == "tts" and "audio_url" in result:
             events.append({"event": "audio", "data": {"audio_url": result["audio_url"]}})
@@ -330,7 +332,7 @@ class PipelineEngine:
         summary["label"] = classifier.get("label")
         summary["confidence"] = classifier.get("confidence")
 
-        for name in ("llm", "llm-ollama"):
+        for name in _COMMENT_SERVICES:
             llm = ctx.results.get(name, {})
             if llm.get("response"):
                 summary["text"] = llm["response"]

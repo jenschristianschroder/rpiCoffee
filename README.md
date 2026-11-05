@@ -45,6 +45,12 @@ The main app runs **natively** on the host (not in Docker) for direct USB sensor
 
 An alternative LLM backend uses the **Hailo AI HAT+ 2** NPU accelerator via `hailo-ollama` for hardware-accelerated inference.
 
+Coffee Brew Comments is also included as source and starts automatically on port
+**8004** after your normal `git pull` and reboot. Register it and wire it into
+your pipeline yourself using [these instructions](services/coffee-comments/README.md).
+It shares the existing TTS and saving stages; your saved pipeline is not changed
+by the update. This lightweight container is always available without a Compose profile.
+
 ## Hardware
 
 | Component | Purpose | Required? |
@@ -70,6 +76,7 @@ An alternative LLM backend uses the **Hailo AI HAT+ 2** NPU accelerator via `hai
 | **Classifier** | 8001 | scikit-learn RandomForest coffee type classifier | [services/classifier/README.md](services/classifier/README.md) |
 | **LLM** | 8002 | Fine-tuned Qwen2.5-0.5B GGUF inference server (llama-cpp) | [services/llm/README.md](services/llm/README.md) |
 | **LLM Ollama** | 8003 | Ollama proxy for Hailo AI HAT+ 2 NPU | [services/llm-ollama/README.md](services/llm-ollama/README.md) |
+| **Coffee Brew Comments** | 8004 | Offline weighted-phrase generator, including unknown machine events | [services/coffee-comments/README.md](services/coffee-comments/README.md) |
 | **TTS** | 5050 | Piper TTS offline speech synthesis | [services/tts/README.md](services/tts/README.md) |
 | **Remote Save** | 7000 | Microsoft Dataverse persistence service | [services/remote-save/README.md](services/remote-save/README.md) |
 

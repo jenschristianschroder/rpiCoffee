@@ -1,5 +1,32 @@
 
 services:
+  # Always available so existing systemd units pick it up after git pull + reboot.
+  # The pipeline decides which comment provider is used for a brew.
+  coffee-comments:
+    build:
+      context: ./services/coffee-comments
+      target: runtime
+    container_name: rpicoffee-coffee-comments
+    ports:
+      - "127.0.0.1:${COFFEE_COMMENTS_PORT:-8004}:8080"
+    environment:
+      COFFEE_TIMEZONE: ${COFFEE_TIMEZONE:-Europe/Copenhagen}
+      HISTORY_DB: /data/history.sqlite3
+    volumes:
+      - coffee-comments-data:/data
+    networks:
+      - coffee-net
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 1.0
+
   # ── classifier – coffee drink classifier ───────────────────────
   classifier:
     build:
@@ -105,6 +132,7 @@ networks:
     driver: bridge
 
 volumes:
+  coffee-comments-data:
   llm-data:
   llm-ollama-data:
   tts-data:

@@ -11,6 +11,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test-coffee-comments:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test bundled service
+        run: |
+          docker build --target test -t rpicoffee-comments-test services/coffee-comments
+          docker run --rm rpicoffee-comments-test
+      - name: Check solution port allocation
+        run: |
+          cp services/remote-save/.env.example services/remote-save/.env
+          docker compose --profile '*' config --format json > /tmp/rpicoffee-compose.json
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          compose = json.loads(Path('/tmp/rpicoffee-compose.json').read_text())
+          ports = [int(port['published']) for service in compose['services'].values()
+                   for port in service.get('ports', [])]
+          env = Path('.env.example').read_text()
+          ports += [int(re.search(rf'^{key}=(\d+)$', env, re.M)[1])
+                    for key in ('APP_PORT', 'OLLAMA_PORT')]
+          assert len(ports) == len(set(ports)), ports
+          comments = compose['services']['coffee-comments']
+          assert int(comments['ports'][0]['published']) == 8004
+          assert comments['ports'][0]['host_ip'] == '127.0.0.1'
+          assert not comments.get('profiles'), 'Existing boot units must start it without a new profile'
+          print('Default host ports are unique:', sorted(ports))
+          PY
+      - name: Start service with the existing boot command pattern
+        run: docker compose up -d --build --force-recreate --wait --wait-timeout 60
+      - name: Exercise production HTTP endpoints on port 8004
+        env:
+          BASE_URL: http://127.0.0.1:8004
+        run: python3 services/coffee-comments/tests/smoke_http.py
+      - name: Container diagnostics
+        if: always()
+        run: |
+          docker compose logs coffee-comments
+          docker compose down -v
+
   lint:
     runs-on: ubuntu-latest
     steps:
