@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException
-from generator import WEIGHTS, CoffeeModel, CommentGenerator
+from generator import LARGE_WEIGHTS, WEIGHTS, CoffeeModel, CommentGenerator
 from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field
 
 
@@ -44,9 +44,16 @@ class GenerateResponse(BaseModel):
     elapsed_s: float
 
 
-def create_app(*, history_db=None, timezone=None, weights_path=None):
+def create_app(*, history_db=None, timezone=None, weights_path=None, model_variant=None):
+    variants = {"classic": WEIGHTS, "large": LARGE_WEIGHTS}
+    path = weights_path or os.environ.get("WEIGHTS_PATH")
+    if path is None:
+        variant = model_variant or os.environ.get("COFFEE_MODEL_VARIANT", "large")
+        if variant not in variants:
+            raise ValueError("COFFEE_MODEL_VARIANT must be classic or large.")
+        path = variants[variant]
     model = CoffeeModel(
-        weights_path or os.environ.get("WEIGHTS_PATH", WEIGHTS),
+        path,
         timezone or os.environ.get("COFFEE_TIMEZONE", "Europe/Copenhagen"),
     )
     history = history_db or os.environ.get(
@@ -55,10 +62,11 @@ def create_app(*, history_db=None, timezone=None, weights_path=None):
     generator = CommentGenerator(model, history)
     application = FastAPI(
         title="Coffee Snark",
-        version="1.3.0",
+        version="2.0.0",
         description="Generate a short, office-friendly comment for a coffee or unidentified machine activity.",
     )
     application.state.generator = generator
+    model_info = model.summary()
 
     def generate_text(coffee_type, timestamp):
         try:
@@ -74,12 +82,19 @@ def create_app(*, history_db=None, timezone=None, weights_path=None):
     def coffee_types():
         return {"coffee_types": list(model.data["coffee_types"]), "timezone": str(model.timezone)}
 
+    @application.get("/model")
+    def model_details():
+        """Inspect the active model without consuming a comment or changing history."""
+        return model_info
+
     @application.get("/manifest")
     def manifest():
         return {
             "name": "coffee-comments",
             "version": application.version,
-            "description": "Offline coffee and mystery-event comments using weighted, authored phrases.",
+            "description": (
+                f"Offline coffee and mystery-event comments using the {model_info['variant']} authored model."
+            ),
             "inputs": [
                 {
                     "name": "coffee_label",

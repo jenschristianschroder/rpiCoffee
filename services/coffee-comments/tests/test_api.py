@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from generator import WEIGHTS
 from phrases import OTHER, OTHER_PERIOD_JOKES
 
 from app import create_app
@@ -15,7 +16,7 @@ class APITests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.history_db = Path(self.temp.name) / "history.db"
-        self.client = TestClient(create_app(history_db=self.history_db))
+        self.client = TestClient(create_app(history_db=self.history_db, weights_path=WEIGHTS))
         self.addCleanup(self.client.close)
         self.payload = {"coffee_type": "espresso", "datetime": "2026-11-04T16:30:00+01:00"}
         self.generate_payload = {"coffee_label": "espresso", "timestamp": self.payload["datetime"]}
@@ -177,7 +178,7 @@ class APITests(unittest.TestCase):
 
         make_requests(self.client)
         self.client.close()
-        with TestClient(create_app(history_db=self.history_db)) as restarted:
+        with TestClient(create_app(history_db=self.history_db, weights_path=WEIGHTS)) as restarted:
             make_requests(restarted)
         with sqlite3.connect(self.history_db) as connection:
             count, distinct = connection.execute("SELECT COUNT(*), COUNT(DISTINCT punchline) FROM history").fetchone()

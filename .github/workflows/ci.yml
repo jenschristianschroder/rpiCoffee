@@ -52,6 +52,15 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:8004
         run: python3 services/coffee-comments/tests/smoke_http.py
+      - name: Switch to classic model using the same persistent history
+        env:
+          COFFEE_MODEL_VARIANT: classic
+        run: docker compose up -d --force-recreate --wait --wait-timeout 60
+      - name: Exercise classic model HTTP endpoints
+        env:
+          BASE_URL: http://127.0.0.1:8004
+          EXPECTED_MODEL_VARIANT: classic
+        run: python3 services/coffee-comments/tests/smoke_http.py
       - name: Container diagnostics
         if: always()
         run: |

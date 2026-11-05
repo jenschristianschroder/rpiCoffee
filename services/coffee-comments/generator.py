@@ -12,6 +12,17 @@ from string import Formatter
 from zoneinfo import ZoneInfo
 
 WEIGHTS = Path(__file__).resolve().parent / "weights.json"
+LARGE_WEIGHTS = WEIGHTS.with_name("weights-large.json")
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def text_fields(text):
+    return {field for _, field, _, _ in Formatter().parse(text) if field}
+
+
+def joke_key(joke):
+    # Variations of a grammar structure share a repeat window and usage counter.
+    return joke.get("family", joke["id"])
 
 
 def normalize(value):
@@ -47,6 +58,7 @@ def avoid_recent(items, recent, key):
 class CoffeeModel:
     def __init__(self, weights_path=WEIGHTS, timezone="Europe/Copenhagen"):
         self.data = json.loads(Path(weights_path).read_text(encoding="utf-8"))
+        self.size_bytes = Path(weights_path).stat().st_size
         self.timezone = ZoneInfo(timezone)
         self._validate()
         self.aliases = {}
@@ -58,7 +70,7 @@ class CoffeeModel:
                 self.aliases[key] = name
 
     def _validate(self):
-        if self.data.get("format_version") != 1:
+        if self.data.get("format_version") not in (1, 2):
             raise ValueError("Unsupported model format.")
         coffees = self.data["coffee_types"]
         periods = self.data["periods"]
@@ -87,7 +99,28 @@ class CoffeeModel:
                 raise ValueError("Invalid coffee definition.")
             if not isinstance(details["aliases"], list) or any(not isinstance(a, str) for a in details["aliases"]):
                 raise ValueError("Invalid coffee aliases.")
-        for item in self.data["openers"] + self.data["punchlines"]:
+        slots = self.data.get("slots", {})
+        patterns = self.data.get("patterns", [])
+        if self.data["format_version"] == 1 and (slots or patterns):
+            raise ValueError("Sentence grammars require model format 2.")
+        context_fields = {"coffee", "coffee_lower", "clock", "weekday"}
+        for name, choices in slots.items():
+            if not name.isidentifier() or name in context_fields or not choices:
+                raise ValueError("Invalid or empty grammar slot.")
+            ids, texts = set(), set()
+            for choice in choices:
+                identifier, text = choice["id"], choice["text"]
+                if not isinstance(identifier, str) or not identifier or identifier in ids:
+                    raise ValueError("Fragment identifiers must be unique within each slot.")
+                if not isinstance(text, str) or not text.strip() or text.casefold() in texts:
+                    raise ValueError("Fragments must be distinct nonempty strings.")
+                if "{" in text or "}" in text:
+                    raise ValueError("Fragments must be literal text.")
+                ids.add(identifier)
+                texts.add(text.casefold())
+        jokes = self.data["punchlines"] + patterns
+        weighted_items = self.data["openers"] + jokes + [choice for choices in slots.values() for choice in choices]
+        for item in weighted_items:
             weight = item["weight"]
             if type(weight) not in (int, float) or not math.isfinite(weight) or not 0 < weight <= 1000:
                 raise ValueError("Weights must be finite positive numbers no greater than 1000.")
@@ -99,13 +132,13 @@ class CoffeeModel:
             if not isinstance(identifier, str) or not identifier or identifier in opener_ids:
                 raise ValueError("Opener identifiers must be unique nonempty strings.")
             opener_ids.add(identifier)
-            fields = {field for _, field, _, _ in Formatter().parse(opener["text"]) if field}
-            if not fields <= {"coffee", "coffee_lower", "clock"}:
+            allowed = context_fields if self.data["format_version"] == 2 else context_fields - {"weekday"}
+            if not text_fields(opener["text"]) <= allowed:
                 raise ValueError("Unsupported opener placeholder.")
             if "coffees" in opener and (not opener["coffees"] or not set(opener["coffees"]) <= coffees.keys()):
                 raise ValueError("Unknown or empty opener coffee restriction.")
         identifiers, texts = set(), set()
-        for item in self.data["punchlines"]:
+        for item in jokes:
             if not isinstance(item["id"], str) or item["id"] in identifiers:
                 raise ValueError("Punchline identifiers must be unique strings.")
             identifiers.add(item["id"])
@@ -119,12 +152,27 @@ class CoffeeModel:
                 raise ValueError("Unknown or empty period restriction.")
             if "caffeine" in item and type(item["caffeine"]) is not bool:
                 raise ValueError("Invalid caffeine restriction.")
+            if "weekdays" in item and (
+                not item["weekdays"] or any(type(day) is not int or not 0 <= day <= 6 for day in item["weekdays"])
+            ):
+                raise ValueError("Weekday restrictions must contain integers from 0 to 6.")
+        for item in patterns:
+            fields = text_fields(item["text"])
+            if not fields or not fields <= slots.keys():
+                raise ValueError("Sentence patterns must reference known grammar slots.")
+            if not isinstance(item.get("family"), str) or not item["family"]:
+                raise ValueError("Sentence patterns require a stable family identifier.")
+        if self.data["format_version"] == 2:
+            for item in self.data["punchlines"]:
+                if "{" in item["text"] or "}" in item["text"]:
+                    raise ValueError("Complete punchlines must be literal text.")
         for coffee in coffees:
             if not self.openers(coffee):
                 raise ValueError(f"No compatible openers for {coffee}.")
             for period in periods:
-                if not self.candidates(coffee, period["id"]):
-                    raise ValueError(f"No compatible punchlines for {coffee}/{period['id']}.")
+                for weekday in range(7):
+                    if not self.candidates(coffee, period["id"], weekday):
+                        raise ValueError(f"No compatible punchlines for {coffee}/{period['id']}/{weekday}.")
 
     def canonical_coffee(self, value):
         key = normalize(value)
@@ -141,27 +189,63 @@ class CoffeeModel:
         period = next(p["id"] for p in self.data["periods"] if p["start_hour"] <= local.hour < p["end_hour"])
         return coffee, local, period
 
-    def candidates(self, coffee, period):
+    def candidates(self, coffee, period, weekday=None):
         caffeinated = self.data["coffee_types"][coffee]["caffeine"]
         return [
             joke
-            for joke in self.data["punchlines"]
+            for joke in self.data["punchlines"] + self.data.get("patterns", [])
             if ("coffees" not in joke or coffee in joke["coffees"])
             and ("periods" not in joke or period in joke["periods"])
             and ("caffeine" not in joke or joke["caffeine"] == caffeinated)
+            and ("weekdays" not in joke or weekday in joke["weekdays"])
         ]
 
     def openers(self, coffee):
         return [opener for opener in self.data["openers"] if "coffees" not in opener or coffee in opener["coffees"]]
 
-    def compose(self, coffee, moment, punchline, opener):
+    def compose(self, coffee, moment, punchline, opener, fragments=None):
         label = self.data["coffee_types"][coffee]["label"]
         # Only change the first letter when inserting the label inside a sentence.
         lower_label = label[0].lower() + label[1:]
-        setup = opener["text"].format(coffee=label, coffee_lower=lower_label, clock=clock_text(moment))
+        setup = opener["text"].format(
+            coffee=label, coffee_lower=lower_label, clock=clock_text(moment), weekday=WEEKDAYS[moment.weekday()]
+        )
         # Clock abbreviations already end in a period.
         setup = setup.replace("..", ".")
-        return f"{setup} {punchline['text']}"
+        body = punchline["text"]
+        if "family" in punchline:
+            body = body.format(**(fragments or {}))
+        return f"{setup} {body}"
+
+    def summary(self):
+        slots = self.data.get("slots", {})
+        patterns = self.data.get("patterns", [])
+        fragments = sum(len(choices) for choices in slots.values())
+        combinations = []
+        for coffee in self.data["coffee_types"]:
+            for period in self.data["periods"]:
+                for weekday in range(7):
+                    count = sum(
+                        math.prod(len(slots[field]) for field in text_fields(joke["text"])) if "family" in joke else 1
+                        for joke in self.candidates(coffee, period["id"], weekday)
+                    )
+                    combinations.append(count * len(self.openers(coffee)))
+        return {
+            "variant": self.data.get("variant", "classic"),
+            "model_type": self.data["model_type"],
+            "size_bytes": self.size_bytes,
+            "learned_parameters": 0,
+            "sampling_weights": len(self.data["openers"]) + len(self.data["punchlines"]) + len(patterns) + fragments,
+            "complete_punchlines": len(self.data["punchlines"]),
+            "openers": len(self.data["openers"]),
+            "sentence_patterns": len(patterns),
+            "pattern_families": len({item["family"] for item in patterns}),
+            "fragments": fragments,
+            "combinations_per_context": {"min": min(combinations), "max": max(combinations)},
+            "combination_note": (
+                "Selectable combinations for a fixed coffee, weekday and time period; not distinct jokes."
+            ),
+        }
 
 
 class CommentGenerator:
@@ -192,6 +276,11 @@ class CommentGenerator:
                     "CREATE TABLE IF NOT EXISTS punchline_usage "
                     "(punchline TEXT PRIMARY KEY, uses INTEGER NOT NULL CHECK(uses >= 0))"
                 )
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS fragment_usage "
+                    "(slot TEXT NOT NULL, fragment TEXT NOT NULL, uses INTEGER NOT NULL CHECK(uses >= 0), "
+                    "PRIMARY KEY(slot, fragment))"
+                )
                 if not has_usage:
                     # Seed once from retained legacy history without clearing it.
                     connection.execute(
@@ -201,7 +290,7 @@ class CommentGenerator:
 
     def comment(self, coffee_type, moment):
         coffee, local, period = self.model.context(coffee_type, moment)
-        candidates = self.model.candidates(coffee, period)
+        candidates = self.model.candidates(coffee, period, local.weekday())
         with self.lock, closing(sqlite3.connect(self.db, timeout=10)) as connection:
             with connection:
                 connection.execute("BEGIN IMMEDIATE")
@@ -211,10 +300,10 @@ class CommentGenerator:
                         "SELECT punchline FROM history ORDER BY id DESC LIMIT ?", (self.history_size,)
                     )
                 ]
-                eligible = avoid_recent(candidates, recent, lambda item: item["id"])
+                eligible = avoid_recent(candidates, recent, joke_key)
                 usage = dict(connection.execute("SELECT punchline, uses FROM punchline_usage"))
-                lowest_count = min(usage.get(j["id"], 0) for j in eligible)
-                eligible = [j for j in eligible if usage.get(j["id"], 0) == lowest_count]
+                lowest_count = min(usage.get(joke_key(j), 0) for j in eligible)
+                eligible = [j for j in eligible if usage.get(joke_key(j), 0) == lowest_count]
                 punchline = self.rng.choices(eligible, weights=[j["weight"] for j in eligible], k=1)[0]
                 recent_openers = [
                     row[0]
@@ -224,14 +313,30 @@ class CommentGenerator:
                 ]
                 openers = avoid_recent(self.model.openers(coffee), recent_openers, opener_key)
                 opener = self.rng.choices(openers, weights=[o["weight"] for o in openers], k=1)[0]
-                text = self.model.compose(coffee, local, punchline, opener)
+                fragments = {}
+                if "family" in punchline:
+                    for slot in sorted(text_fields(punchline["text"])):
+                        choices = self.model.data["slots"][slot]
+                        counts = dict(
+                            connection.execute("SELECT fragment, uses FROM fragment_usage WHERE slot = ?", (slot,))
+                        )
+                        least = min(counts.get(choice["id"], 0) for choice in choices)
+                        choices = [choice for choice in choices if counts.get(choice["id"], 0) == least]
+                        choice = self.rng.choices(choices, weights=[item["weight"] for item in choices], k=1)[0]
+                        fragments[slot] = choice["text"]
+                        connection.execute(
+                            "INSERT INTO fragment_usage(slot, fragment, uses) VALUES (?, ?, 1) "
+                            "ON CONFLICT(slot, fragment) DO UPDATE SET uses=uses+1",
+                            (slot, choice["id"]),
+                        )
+                text = self.model.compose(coffee, local, punchline, opener, fragments)
                 connection.execute(
-                    "INSERT INTO history(punchline, opener) VALUES (?, ?)", (punchline["id"], opener_key(opener))
+                    "INSERT INTO history(punchline, opener) VALUES (?, ?)", (joke_key(punchline), opener_key(opener))
                 )
                 connection.execute(
                     "INSERT INTO punchline_usage(punchline, uses) VALUES (?, 1) "
                     "ON CONFLICT(punchline) DO UPDATE SET uses=uses+1",
-                    (punchline["id"],),
+                    (joke_key(punchline),),
                 )
                 connection.execute(
                     "DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY id DESC LIMIT ?)",

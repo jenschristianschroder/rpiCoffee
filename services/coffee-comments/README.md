@@ -3,7 +3,49 @@
 An offline comment service for black coffee, cappuccino, espresso, and `other`
 machine activity. Its source, phrase model, and tests are included in this
 repository. No second checkout, separately published service image, or model download is required.
-It combines weighted authored phrases; it is not a neural LLM.
+It combines weighted authored phrases and sentence structures; it is not a neural LLM.
+
+## Large and classic models
+
+Version 2 defaults to the **large** model. The generation endpoints, service name,
+port, and pipeline mappings are unchanged. Updating an existing installation
+therefore selects the larger model without re-registering or rewiring the service.
+
+| Model data | Classic | Large |
+| --- | ---: | ---: |
+| File size | 93,489 bytes (93.5 KB) | 569,347 bytes (569.3 KB) |
+| Complete punchlines | 420 | 1,000 |
+| Opening styles | 20 | 60 |
+| Sentence families | 0 | 100 |
+| Sentence patterns | 0 | 400 (four introductions per family) |
+| Typed phrase fragments | 0 | 2,000 |
+| Sampling weights | 440 | 3,460 |
+| Learned neural parameters | 0 | 0 |
+
+The large bank contains 750 coffee jokes and 250 mystery-event jokes. It retains
+every original joke and adds weekday-specific material, selected using the event's
+date in the configured timezone. Its 20 vocabulary banks each combine five compatible
+modifiers with 20 base phrases. These are lexical variations, not 2,000 new jokes.
+Patterns compose those fragments into sentences alongside the complete joke bank.
+Comments are checked to stay within 220 characters for all shipped combinations.
+
+For a fixed coffee, weekday, and time period, the large model permits roughly
+28.8–62.4 million selectable combinations. This is a combinatorial count, **not**
+a count of distinct jokes or a claim of general language ability. All four versions
+of a sentence family share a repetition key, so changing its introduction does not
+allow the same premise to bypass recent-history protection.
+
+To select the original generator, add `COFFEE_MODEL_VARIANT=classic` to the root
+`.env` and reboot or recreate the container. Set it to `large` to switch back.
+The original `weights.json` remains unchanged. Model files exclude the Python
+runtime, Docker image, and history database.
+
+Check the active model, exact size, counts, and combination range without generating
+a comment:
+
+```bash
+curl -sS http://127.0.0.1:8004/model
+```
 
 ## Update the Pi
 
@@ -82,9 +124,15 @@ registry endpoint and `COFFEE_COMMENTS_ENDPOINT` for the start/status scripts.
 
 The named volume `coffee-comments-data` stores `/data/history.sqlite3`, retaining
 the recent joke/opening history and usage counters across updates and reboots.
+The large model also balances fragment usage; those counters persist in the same
+database. It avoids the last 60 joke premises and the last two opening styles.
+Switching models retains history, and the existing database is upgraded in place.
 Do not remove that volume when updating if you want to retain repetition history.
-To edit the humor, update `phrases.py`, run `python write_weights.py` in this
-directory, and rebuild. Keep existing joke IDs stable.
+To edit the classic humor, update `phrases.py` and run `python write_weights.py`.
+The large model adds `large_phrases.py` and `large_grammar.py`; regenerate it with
+`python write_large_weights.py` after editing any of those sources, then rebuild.
+Keep existing joke IDs stable by appending within groups. The builder verifies
+group counts; intentionally expanding a group requires updating its expected count.
 
 ## Development
 
@@ -97,14 +145,15 @@ docker compose up -d --build coffee-comments
 BASE_URL=http://127.0.0.1:8004 python services/coffee-comments/tests/smoke_http.py
 ```
 
-The preserved upstream model/API suite runs in the service's isolated test image.
+The model/API suite runs in the service's isolated test image and covers both variants.
 The app's pytest suite additionally checks manifest registration, pipeline text
 events, TTS/remote-save wiring, and the final kiosk result. CI tests this Docker
-service on ARM64 and x86-64 and checks the solution's default host ports.
+service on ARM64 and x86-64, switches between models using the same history volume,
+and checks the solution's default host ports.
 
 ## Source provenance
 
-Imported from [Coffee-Brew-Comments, commit 4843af0](https://github.com/jenschristianschroder/Coffee-Brew-Comments/tree/4843af094a5ae3c62fdeb79c6d694568700cdc87)
-(API version 1.3.0), with Python formatting aligned to this repository. This is
+Bundled from [Coffee-Brew-Comments, commit d47c845](https://github.com/jenschristianschroder/Coffee-Brew-Comments/tree/d47c845773e79442699410f50c8e083de1586dd8)
+(API version 2.0.0), with Python formatting aligned to this repository. This is
 a source snapshot maintained here; `git pull` updates it as part of rpiCoffee.
 Upstream changes are incorporated deliberately, not downloaded at boot.
