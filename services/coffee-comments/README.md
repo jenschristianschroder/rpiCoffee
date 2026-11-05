@@ -2,7 +2,7 @@
 
 An offline comment service for black coffee, cappuccino, espresso, and `other`
 machine activity. Its source, phrase model, and tests are included in this
-repository. No second checkout, image registry, or model download is required.
+repository. No second checkout, separately published service image, or model download is required.
 It combines weighted authored phrases; it is not a neural LLM.
 
 ## Update the Pi
