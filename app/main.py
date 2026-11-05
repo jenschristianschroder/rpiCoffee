@@ -505,7 +505,7 @@ async def services_status():
             if svc_id not in statuses:
                 statuses[svc_id] = {
                     "enabled": True,
-                    "healthy": info.get("status") == "healthy",
+                    "healthy": info.get("status") in ("ok", "healthy"),
                 }
     except Exception:
         logger.debug("Registry health check failed during services_status", exc_info=True)

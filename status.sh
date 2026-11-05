@@ -211,6 +211,13 @@ else
     EXTRA[llm]=""
 fi
 
+# --- Coffee Brew Comments (always available; pipeline selects usage) ---
+_COMMENTS_URL="${COFFEE_COMMENTS_ENDPOINT:-http://127.0.0.1:${COFFEE_COMMENTS_PORT:-8004}}"
+STATUS[coffee-comments]="$(container_status rpicoffee-coffee-comments)"
+HEALTH[coffee-comments]="$(http_health "${_COMMENTS_URL}/health")"
+ENDPOINT_INFO[coffee-comments]="${_COMMENTS_URL}"
+EXTRA[coffee-comments]="selected through the pipeline"
+
 # --- TTS ---
 if [[ "${TTS_ENABLED:-false}" == "true" ]]; then
     read -r t_host t_port <<< "$(parse_endpoint "${TTS_ENDPOINT:-http://localhost:5050}")"
@@ -286,7 +293,7 @@ fi
 
 # ── Output ───────────────────────────────────────────────────────
 
-COMPONENTS=(app docker-services classifier llm tts remote-save sensor)
+COMPONENTS=(app docker-services classifier llm coffee-comments tts remote-save sensor)
 
 if $JSON_MODE; then
     # JSON output

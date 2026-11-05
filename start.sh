@@ -52,43 +52,40 @@ echo ""
 # Ensure host data directories exist (app/data is volume-mounted into containers)
 mkdir -p "$SCRIPT_DIR/app/data/training" "$SCRIPT_DIR/app/data/models" "$SCRIPT_DIR/app/data/audio"
 
-if [[ -n "$PROFILES" ]]; then
-    info "Starting Docker services..."
-    # BuildKit uses content checksums (not timestamps) for COPY cache
-    # invalidation, preventing stale images after git pull.
-    # shellcheck disable=SC2086
-    DOCKER_BUILDKIT=1 docker compose $PROFILES up -d --build --force-recreate
+info "Starting Docker services..."
+# BuildKit uses content checksums (not timestamps) for COPY cache
+# invalidation, preventing stale images after git pull.
+# shellcheck disable=SC2086
+DOCKER_BUILDKIT=1 docker compose $PROFILES up -d --build --force-recreate
 
-    # ── Health-check loop (Docker-managed services only) ────────
-    declare -A SVC_HEALTH
-    [[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health" || true
-    [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8002}/health" || true
-    [[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health" || true
-    [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health" || true
+# ── Health-check loop (Docker-managed services only) ────────
+declare -A SVC_HEALTH
+SVC_HEALTH[coffee-comments]="${COFFEE_COMMENTS_ENDPOINT:-http://127.0.0.1:${COFFEE_COMMENTS_PORT:-8004}}/health"
+[[ "${CLASSIFIER_ENABLED:-false}"  == "true" ]] && SVC_HEALTH[classifier]="${CLASSIFIER_ENDPOINT:-http://localhost:8001}/health" || true
+[[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" != "ollama" ]] && SVC_HEALTH[llm]="${LLM_ENDPOINT:-http://localhost:8002}/health" || true
+[[ "${TTS_ENABLED:-false}"         == "true" ]] && SVC_HEALTH[tts]="${TTS_ENDPOINT:-http://localhost:5050}/health" || true
+[[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && SVC_HEALTH[remote-save]="${REMOTE_SAVE_ENDPOINT:-http://localhost:7000}/health" || true
 
-    for svc in "${!SVC_HEALTH[@]}"; do
-        url="${SVC_HEALTH[$svc]}"
-        echo -n "  Waiting for $svc "
-        TRIES=0
-        MAX_TRIES=60
-        while ! curl -sf --max-time 2 "$url" > /dev/null 2>&1; do
-            TRIES=$((TRIES + 1))
-            if (( TRIES >= MAX_TRIES )); then
-                echo ""
-                fail "$svc did not become healthy after ${MAX_TRIES}×2s"
-                break
-            fi
-            echo -n "."
-            sleep 2
-        done
-        if (( TRIES < MAX_TRIES )); then
+for svc in "${!SVC_HEALTH[@]}"; do
+    url="${SVC_HEALTH[$svc]}"
+    echo -n "  Waiting for $svc "
+    TRIES=0
+    MAX_TRIES=60
+    while ! curl -sf --max-time 2 "$url" > /dev/null 2>&1; do
+        TRIES=$((TRIES + 1))
+        if (( TRIES >= MAX_TRIES )); then
             echo ""
-            ok "$svc healthy"
+            fail "$svc did not become healthy after ${MAX_TRIES}×2s"
+            break
         fi
+        echo -n "."
+        sleep 2
     done
-else
-    info "No Docker services enabled"
-fi
+    if (( TRIES < MAX_TRIES )); then
+        echo ""
+        ok "$svc healthy"
+    fi
+done
 
 # ── External service health checks (not Docker-managed) ─────────
 if [[ "${LLM_ENABLED:-false}" == "true" && "${LLM_BACKEND:-llama-cpp}" == "ollama" ]]; then

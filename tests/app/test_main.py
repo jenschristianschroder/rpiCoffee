@@ -71,6 +71,15 @@ class TestBrewAPI:
 
 class TestServicesStatus:
     @pytest.mark.asyncio
+    async def test_registered_coffee_comments_health_is_ok(self, client):
+        with patch("main.config") as cfg:
+            cfg.CLASSIFIER_ENABLED = cfg.LLM_ENABLED = cfg.TTS_ENABLED = cfg.REMOTE_SAVE_ENABLED = False
+            cfg.SENSOR_MODE = "mock"
+            client["registry"].health_check_all = AsyncMock(return_value={"coffee-comments": {"status": "ok"}})
+            response = await client["client"].get("/api/services/status")
+        assert response.json()["coffee_comments"] == {"enabled": True, "healthy": True}
+
+    @pytest.mark.asyncio
     async def test_services_status_mock_mode(self, client):
         # Patch config attributes read by services_status
         with patch("main.config") as cfg:

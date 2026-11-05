@@ -43,13 +43,10 @@ PROFILES=""
 [[ "${TTS_ENABLED:-false}"         == "true" ]] && PROFILES="$PROFILES --profile tts"
 [[ "${REMOTE_SAVE_ENABLED:-false}" == "true" ]] && PROFILES="$PROFILES --profile remote-save"
 
-if [[ -n "$PROFILES" ]]; then
-    # shellcheck disable=SC2086
-    docker compose $PROFILES down
-    ok "Docker services stopped"
-else
-    info "No Docker services configured"
-fi
+# Unprofiled Coffee Brew Comments is included even when no optional services are enabled.
+# shellcheck disable=SC2086
+docker compose $PROFILES down
+ok "Docker services stopped"
 
 echo ""
 ok "rpiCoffee stopped"

@@ -482,6 +482,10 @@ build_service() {
     fi
 }
 
+# Source is included in this repo; this service is available with every installation.
+info "Building Coffee Brew Comments..."
+docker compose build coffee-comments 2>&1 | tee -a "$LOG_FILE"
+
 if [[ "${CLASSIFIER_ENABLED:-false}" == "true" ]]; then
     build_service "classifier" "classifier"
 else
