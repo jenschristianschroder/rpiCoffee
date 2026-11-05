@@ -182,7 +182,7 @@
     <div class="status-dots">
         <div class="status-item"><span class="dot gray" id="s-sensor"></span>sensor</div>
         <div id="registry-dots" style="display:contents;">
-            <!-- Populated dynamically from service registry -->
+            <!-- Enabled services in pipeline order -->
         </div>
     </div>
     <div class="right-group">
@@ -243,54 +243,67 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ── Service health ────────────────────────────────────────────
-let _kioskRegistryLoaded = false;
+let _kioskServiceNames = [];
 
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-async function loadKioskRegistry() {
+async function loadKioskPipeline() {
     try {
-        const r = await fetch('/api/registry/services');
-        const services = await r.json();
+        const r = await fetch('/api/registry/pipeline');
+        if (!r.ok) return;
+        const config = await r.json();
         const container = document.getElementById('registry-dots');
         if (!container) return;
+        const names = [];
+        const seen = new Set();
+        for (const step of config.pipeline || []) {
+            const svc = (config.services || {})[step.service];
+            if (!step.enabled || !svc || !svc.enabled || seen.has(step.service)) continue;
+            names.push(step.service);
+            seen.add(step.service);
+        }
+        // Keep existing dots (including active-stage blinking) when the pipeline is unchanged.
+        if (JSON.stringify(names) === JSON.stringify(_kioskServiceNames)) return;
         let html = '';
-        services.forEach(function(svc) {
-            const svcId = svc.name.replace(/-/g, '_');
-            html += '<div class="status-item"><span class="dot gray" id="s-' + escHtml(svcId) + '"></span>' + escHtml(svc.name) + '</div>';
+        names.forEach(function(name) {
+            const svcId = name.replace(/-/g, '_');
+            html += '<div class="status-item"><span class="dot gray" id="s-' + escHtml(svcId) + '"></span>' + escHtml(name) + '</div>';
         });
         container.innerHTML = html;
-        _kioskRegistryLoaded = true;
+        _kioskServiceNames = names;
     } catch (e) { /* ignore */ }
 }
 
+function setDotHealth(dot, healthy) {
+    dot.classList.remove('gray');
+    dot.classList.toggle('green', Boolean(healthy));
+    dot.classList.toggle('red', !healthy);
+}
+
 async function checkServices() {
-    if (!_kioskRegistryLoaded) await loadKioskRegistry();
+    await loadKioskPipeline();
     try {
+        // Only the sensor uses legacy status; service visibility comes from the pipeline.
         const r = await fetch('/api/services/status');
         const data = await r.json();
-        for (const [svc, info] of Object.entries(data)) {
-            const dot = document.getElementById('s-' + svc);
-            if (!dot) continue;
+        const info = data.sensor;
+        const dot = document.getElementById('s-sensor');
+        if (dot && info) {
             const item = dot.closest('.status-item');
-            if (info.enabled === false) {
-                if (item) item.style.display = 'none';
-            } else {
-                if (item) item.style.display = '';
-                dot.className = info.healthy ? 'dot green' : 'dot red';
-            }
+            if (item) item.style.display = info.enabled === false ? 'none' : '';
+            setDotHealth(dot, info.healthy);
         }
-        // Also check registry health for dynamic services
+    } catch (e) { /* ignore */ }
+    try {
         const rh = await fetch('/api/registry/health');
         const healthData = await rh.json();
-        for (const [name, info] of Object.entries(healthData)) {
+        for (const name of _kioskServiceNames) {
+            const info = healthData[name];
+            if (!info) continue;
             const svcId = name.replace(/-/g, '_');
             const dot = document.getElementById('s-' + svcId);
             if (!dot) continue;
-            if (info.status === 'unreachable' || info.error) {
-                dot.className = 'dot red';
-            } else {
-                dot.className = 'dot green';
-            }
+            setDotHealth(dot, info.status !== 'unreachable' && !info.error);
         }
     } catch (e) { /* ignore */ }
 }
