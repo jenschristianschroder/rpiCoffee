@@ -1,12 +1,30 @@
 # rpiCoffee — TTS Service
 
-Offline text-to-speech API powered by [Piper TTS](https://github.com/rhasspy/piper). Runs in Docker on a Raspberry Pi — no cloud required.
+Offline text-to-speech API powered by [Piper TTS](https://github.com/OHF-Voice/piper1-gpl).
+Runs in Docker on a Raspberry Pi — no cloud required.
 
 ## Overview
 
 Receives text from the main app (typically an LLM-generated coffee commentary) and returns a WAV audio file. Uses ONNX-based inference for fast, fully offline speech synthesis.
 
-Default voice: `en_US-lessac-medium` (~100 MB, downloaded at Docker build time).
+Default voice: `en_US-lessac-medium` (~63 MB model, downloaded at Docker build time).
+
+The engine is pinned to **Piper 1.8.0**, which provides Linux ARM64 and x86-64 wheels.
+The wrapper uses `PiperVoice.synthesize_wav` and `SynthesisConfig`; speed still maps
+to `length_scale = 1 / speed`. The existing voice, WAV response, port 5050, settings
+volume, and pipeline contract are retained.
+
+After merging the update, use the usual Pi update process from the repository root:
+
+```bash
+git pull
+sudo reboot
+```
+
+The existing boot service rebuilds the enabled TTS container. No service
+re-registration or pipeline changes are needed. Confirm the running engine with
+`curl -sS http://127.0.0.1:5050/health`; it reports `"engine_version":"1.8.0"`.
+Updating the engine does not replace or retrain the voice model.
 
 ## API Reference
 
@@ -16,7 +34,7 @@ Default voice: `en_US-lessac-medium` (~100 MB, downloaded at Docker build time).
 GET /health
 ```
 
-Returns server status.
+Returns server status, engine name and version, and the currently loaded voice.
 
 ### Synthesize
 
@@ -135,16 +153,20 @@ docker compose restart tts
 ## Development
 
 ```bash
-cd services/tts
-pip install -r requirements.txt
-cd app
-uvicorn main:app --host 0.0.0.0 --port 5050 --reload
+docker build --target test -t rpicoffee-tts-test services/tts
+docker run --rm --network none rpicoffee-tts-test
+docker compose --profile tts up -d --build tts
+python3 services/tts/tests/smoke_http.py
 ```
 
-> **Note:** Piper TTS requires Linux. The TTS service is skipped when running locally on Windows.
+Tests perform real CPU synthesis with the bundled voice, validate complete,
+non-silent PCM WAV files, and check speed changes and both HTTP synthesis routes.
+CI runs these tests plus production-container HTTP checks on ARM64 and x86-64.
 
 ## Dependencies
 
 - `fastapi`, `uvicorn` — web framework
-- `piper-tts` — Piper TTS engine (ONNX inference)
+- `piper-tts==1.8.0` — Piper TTS engine (ONNX inference, GPL-3.0-or-later)
 - `aiofiles` — async file I/O
+
+Voice models retain their own licenses; see each voice's model card.

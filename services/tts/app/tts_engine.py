@@ -97,14 +97,15 @@ class TTSEngine:
             raise TTSEngineError("Text is empty")
 
         try:
-            # Piper synthesize_ids_to_wav expects a file-like object
             wav_buffer = io.BytesIO()
 
             with wave.open(wav_buffer, "wb") as wav_file:
-                self._voice_instance.synthesize(
+                self._voice_instance.synthesize_wav(
                     text,
                     wav_file,
-                    length_scale=1.0 / speed,  # Inverse: higher speed = lower scale
+                    syn_config=piper.SynthesisConfig(
+                        length_scale=1.0 / speed,  # Inverse: higher speed = lower scale
+                    ),
                 )
 
             wav_buffer.seek(0)
