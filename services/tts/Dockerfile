@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm AS base
 
 LABEL maintainer="local-tts"
 LABEL description="Local Text-to-Speech using Piper TTS on Raspberry Pi"
@@ -37,3 +37,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 
 # Run the TTS server
 CMD ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "5050"]
+
+FROM base AS test
+COPY requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+COPY tests/ ./tests/
+CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
+
+FROM base AS runtime

@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Optional
 
@@ -138,6 +139,7 @@ async def health():
     return {
         "status": "healthy",
         "engine": "piper-tts",
+        "engine_version": version("piper-tts"),
         "loaded_voice": engine.current_voice if engine else None,
     }
 

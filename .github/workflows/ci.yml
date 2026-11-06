@@ -11,6 +11,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test-tts:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test Piper with the bundled voice
+        run: |
+          docker build --target test -t rpicoffee-tts-test services/tts
+          docker run --rm --network none rpicoffee-tts-test
+      - name: Start production TTS container through Compose
+        run: |
+          cp services/remote-save/.env.example services/remote-save/.env
+          docker compose --profile tts up -d --build --wait --wait-timeout 90 tts
+      - name: Exercise production HTTP and validate WAV audio
+        run: python3 services/tts/tests/smoke_http.py
+      - name: Container diagnostics
+        if: always()
+        run: |
+          docker compose --profile tts logs tts
+          docker compose --profile tts down -v
+
   test-coffee-comments:
     needs: lint
     strategy:
