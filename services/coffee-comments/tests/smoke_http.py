@@ -26,7 +26,19 @@ with urllib.request.urlopen(base + "/manifest", timeout=5) as response:
     assert manifest["name"] == "coffee-comments"
     assert manifest["endpoints"]["execute"] == {"method": "POST", "path": "/generate"}
     assert manifest["endpoints"]["health"] == {"method": "GET", "path": "/health"}
+    assert manifest["endpoints"]["settings"] == {"method": "GET", "path": "/settings"}
+    assert manifest["endpoints"]["update_settings"] == {"method": "PATCH", "path": "/settings"}
     assert {item["name"] for item in manifest["inputs"]} == {"coffee_label", "timestamp"}
+
+if variant := os.environ.get("SET_MODEL_VARIANT"):
+    request = urllib.request.Request(
+        base + "/settings",
+        method="PATCH",
+        data=json.dumps({"settings": {"COFFEE_MODEL_VARIANT": variant}}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert json.load(response) == {"ok": True, "settings": {"COFFEE_MODEL_VARIANT": variant}}
 
 with urllib.request.urlopen(base + "/model", timeout=5) as response:
     model_info = json.load(response)
@@ -34,6 +46,13 @@ with urllib.request.urlopen(base + "/model", timeout=5) as response:
     assert model_info["learned_parameters"] == 0
     assert model_info["complete_punchlines"] == (1000 if model_info["variant"] == "large" else 420)
     print("Active model:", json.dumps(model_info))
+
+with urllib.request.urlopen(base + "/settings", timeout=5) as response:
+    (setting,) = json.load(response)
+    assert setting["key"] == "COFFEE_MODEL_VARIANT"
+    assert setting["value"] == model_info["variant"]
+    assert setting["options"] == ["classic", "large"]
+    assert not setting["read_only"]
 
 model = json.loads((Path(__file__).resolve().parents[1] / "weights.json").read_text())
 other_lines = [item["text"] for item in model["punchlines"] if item.get("coffees") == ["other"]]

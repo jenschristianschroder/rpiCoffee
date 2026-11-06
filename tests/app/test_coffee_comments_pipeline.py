@@ -110,3 +110,42 @@ def test_all_comment_providers_keep_the_kiosk_contract(provider):
     assert engine._legacy_events(provider, ctx.results[provider], ctx) == [
         {"event": "text", "data": {"text": "Your comment."}},
     ]
+
+
+async def test_model_selection_through_registered_settings_proxy(comments_app, tmp_path, monkeypatch):
+    import main
+
+    reg = ServiceRegistry()
+    reg.load(tmp_path / "pipeline.json")
+    endpoint = "http://127.0.0.1:8004"
+    transport = httpx.ASGITransport(app=comments_app)
+    async with httpx.AsyncClient(transport=transport, base_url=endpoint) as comments:
+        manifest = (await comments.get("/manifest")).json()
+
+        async def settings(request):
+            response = await comments.request(request.method, "/settings", content=request.content,
+                                              headers={"Content-Type": "application/json"})
+            return httpx.Response(response.status_code, json=response.json())
+
+        with respx.mock() as router:
+            router.get(endpoint + "/manifest").respond(200, json=manifest)
+            await reg.register("coffee-comments", endpoint)
+            monkeypatch.setattr(main, "registry", reg)
+            router.get(endpoint + "/settings").mock(side_effect=settings)
+            router.patch(endpoint + "/settings").mock(side_effect=settings)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://test") as app:
+                current = await app.get("/api/services/coffee-comments/settings")
+                assert current.json()[0]["options"] == ["classic", "large"]
+                changed = await app.patch("/api/services/coffee-comments/settings", json={
+                    "settings": {"COFFEE_MODEL_VARIANT": "classic"},
+                })
+                assert changed.json() == {"ok": True, "settings": {"COFFEE_MODEL_VARIANT": "classic"}}
+                assert (await comments.get("/model")).json()["variant"] == "classic"
+                assert (await app.get("/api/services/coffee-comments/settings")).json()[0]["value"] == "classic"
+                invalid = await app.patch("/api/services/coffee-comments/settings", json={
+                    "settings": {"COFFEE_MODEL_VARIANT": "huge"},
+                })
+                assert "422" in invalid.json()["error"]
+                assert (await comments.get("/model")).json()["variant"] == "classic"
+    assert json.loads((tmp_path / "settings.json").read_text()) == {"COFFEE_MODEL_VARIANT": "classic"}
+    assert reg.get_pipeline() == []

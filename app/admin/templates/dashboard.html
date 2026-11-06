@@ -1769,30 +1769,40 @@ function renderSettingsForm(container, svc, settings) {
     var html = '<form class="svc-form" data-service="' + escAttr(svc) + '">';
     settings.forEach(function(s) {
         var inputHtml = '';
-        if (s.type === 'bool') {
+        var disabled = s.read_only ? ' disabled' : '';
+        if (Array.isArray(s.options) && s.options.length > 0) {
+            inputHtml = '<label>' + escHtml(s.name)
+                + '<select name="' + escAttr(s.key) + '"' + disabled + '>';
+            s.options.forEach(function(option) {
+                var selected = String(option) === String(s.value) ? ' selected' : '';
+                inputHtml += '<option value="' + escAttr(String(option)) + '"' + selected + '>'
+                    + escHtml(String(option)) + '</option>';
+            });
+            inputHtml += '</select></label>';
+        } else if (s.type === 'bool') {
             var checked = (s.value === true || s.value === 'true') ? ' checked' : '';
             inputHtml = '<label style="display:flex;align-items:center;gap:0.5rem;">'
                 + escHtml(s.name)
-                + '<input type="checkbox" role="switch" name="' + escAttr(s.key) + '"' + checked + '>'
+                + '<input type="checkbox" role="switch" name="' + escAttr(s.key) + '"' + checked + disabled + '>'
                 + '</label>';
         } else if (s.type === 'float') {
             inputHtml = '<label>' + escHtml(s.name)
-                + '<input type="number" step="any" name="' + escAttr(s.key) + '" value="' + (s.value != null ? s.value : '') + '">'
+                + '<input type="number" step="any" name="' + escAttr(s.key) + '" value="' + (s.value != null ? s.value : '') + '"' + disabled + '>'
                 + '</label>';
         } else if (s.type === 'int') {
             inputHtml = '<label>' + escHtml(s.name)
-                + '<input type="number" step="1" name="' + escAttr(s.key) + '" value="' + (s.value != null ? s.value : '') + '">'
+                + '<input type="number" step="1" name="' + escAttr(s.key) + '" value="' + (s.value != null ? s.value : '') + '"' + disabled + '>'
                 + '</label>';
         } else {
             var val = s.value != null ? s.value : '';
             var escaped = escHtml(String(val));
             if (String(val).length > 80) {
                 inputHtml = '<label>' + escHtml(s.name)
-                    + '<textarea name="' + escAttr(s.key) + '" rows="6" style="font-family:monospace;font-size:0.85rem;">' + escaped + '</textarea>'
+                    + '<textarea name="' + escAttr(s.key) + '" rows="6" style="font-family:monospace;font-size:0.85rem;"' + disabled + '>' + escaped + '</textarea>'
                     + '</label>';
             } else {
                 inputHtml = '<label>' + escHtml(s.name)
-                    + '<input type="text" name="' + escAttr(s.key) + '" value="' + escaped + '">'
+                    + '<input type="text" name="' + escAttr(s.key) + '" value="' + escaped + '"' + disabled + '>'
                     + '</label>';
             }
         }
@@ -1802,7 +1812,7 @@ function renderSettingsForm(container, svc, settings) {
             + '</div>';
     });
     html += '<div style="display:flex;gap:0.8rem;align-items:center;">'
-        + '<button type="submit" style="margin:0;">Save</button>'
+        + '<button type="submit" style="margin:0;"' + (settings.every(function(s) { return s.read_only; }) ? ' disabled' : '') + '>Save</button>'
         + '<span class="svc-save-status" style="font-size:0.85rem;color:var(--pico-muted-color);"></span>'
         + '</div></form>';
     container.innerHTML = html;
@@ -1814,6 +1824,7 @@ function renderSettingsForm(container, svc, settings) {
         var statusEl = form.querySelector('.svc-save-status');
         var payload = {};
         settings.forEach(function(s) {
+            if (s.read_only) return;
             var input = form.querySelector('[name="' + s.key + '"]');
             if (!input) return;
             // Never send the masked placeholder back for secret fields —

@@ -35,8 +35,10 @@ a count of distinct jokes or a claim of general language ability. All four versi
 of a sentence family share a repetition key, so changing its introduction does not
 allow the same premise to bypass recent-history protection.
 
-To select the original generator, add `COFFEE_MODEL_VARIANT=classic` to the root
-`.env` and reboot or recreate the container. Set it to `large` to switch back.
+Select **classic** or **large** in **Admin → Service Settings → coffee-comments →
+Model variant**, then save. The change applies immediately and survives restarts.
+`COFFEE_MODEL_VARIANT` in the root `.env` sets the initial default only; after a
+selection is saved through settings, the saved value takes precedence.
 The original `weights.json` remains unchanged. Model files exclude the Python
 runtime, Docker image, and history database.
 
@@ -117,12 +119,39 @@ deduplication or audio playback.
 
 ## Settings and history
 
+If `coffee-comments` was already registered before this upgrade, click its
+**Refresh manifest** button (circular arrow) in the **Service Registry** once.
+The app caches registered manifests; refreshing exposes the new **Service Settings**
+panel without changing your pipeline. Newly registered services discover it automatically.
+
+The manifest advertises `GET /settings` and `PATCH /settings`. You can also switch
+models directly on the Pi:
+
+```bash
+curl -sS http://127.0.0.1:8004/settings
+curl -sS -X PATCH http://127.0.0.1:8004/settings \
+  -H 'Content-Type: application/json' \
+  -d '{"settings":{"COFFEE_MODEL_VARIANT":"classic"}}'
+```
+
+Use `large` to switch back. Flat `{"COFFEE_MODEL_VARIANT":"large"}` bodies are
+also accepted. Invalid values or unknown keys return 422. Updates are validated
+and saved atomically before changing the running model; a failed update keeps the
+previous selection. Both generation APIs switch together and retain history.
+The Docker service uses one worker to keep runtime selection consistent.
+
+The selection is stored in `/data/settings.json` beside the history database.
+Startup precedence is: an explicit `WEIGHTS_PATH` override, saved selection,
+`COFFEE_MODEL_VARIANT`, then `large`. When custom weights are explicitly supplied,
+the selector is read-only and displays `custom`; remove that override and restart
+to use the bundled selector. Other service configuration remains in the environment.
+
 Compose defaults to `COFFEE_TIMEZONE=Europe/Copenhagen`. To change the timezone
 or host port, set `COFFEE_TIMEZONE` or `COFFEE_COMMENTS_PORT` in the root `.env`
 and recreate the container or reboot. If changing the port, also update its
 registry endpoint and `COFFEE_COMMENTS_ENDPOINT` for the start/status scripts.
 
-The named volume `coffee-comments-data` stores `/data/history.sqlite3`, retaining
+The named volume `coffee-comments-data` stores the selection and `/data/history.sqlite3`, retaining
 the recent joke/opening history and usage counters across updates and reboots.
 The large model also balances fragment usage; those counters persist in the same
 database. It avoids the last 60 joke premises and the last two opening styles.
@@ -153,7 +182,7 @@ and checks the solution's default host ports.
 
 ## Source provenance
 
-Bundled from [Coffee-Brew-Comments, commit d47c845](https://github.com/jenschristianschroder/Coffee-Brew-Comments/tree/d47c845773e79442699410f50c8e083de1586dd8)
+Bundled from [Coffee-Brew-Comments, commit 270227d](https://github.com/jenschristianschroder/Coffee-Brew-Comments/tree/270227db0909f30d33bc68fa6e4184b79b812eb4)
 (API version 2.0.0), with Python formatting aligned to this repository. This is
 a source snapshot maintained here; `git pull` updates it as part of rpiCoffee.
 Upstream changes are incorporated deliberately, not downloaded at boot.
