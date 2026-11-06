@@ -52,6 +52,26 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:8004
         run: python3 services/coffee-comments/tests/smoke_http.py
+      - name: Switch to classic through runtime settings and exercise HTTP
+        env:
+          BASE_URL: http://127.0.0.1:8004
+          SET_MODEL_VARIANT: classic
+          EXPECTED_MODEL_VARIANT: classic
+        run: python3 services/coffee-comments/tests/smoke_http.py
+      - name: Recreate container with the same data volume
+        env:
+          COFFEE_MODEL_VARIANT: large
+        run: docker compose up -d --force-recreate --wait --wait-timeout 60
+      - name: Verify saved selection overrides environment after recreation
+        env:
+          BASE_URL: http://127.0.0.1:8004
+          EXPECTED_MODEL_VARIANT: classic
+        run: python3 services/coffee-comments/tests/smoke_http.py
+      - name: Switch back to large without restarting
+        env:
+          BASE_URL: http://127.0.0.1:8004
+          SET_MODEL_VARIANT: large
+        run: python3 services/coffee-comments/tests/smoke_http.py
       - name: Container diagnostics
         if: always()
         run: |

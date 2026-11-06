@@ -120,9 +120,21 @@ Returns a JSON array of setting descriptors:
 ]
 ```
 
+The admin form supports an optional `options` array of strings on a string setting,
+for example `"options": ["classic", "large"]`. It renders these as a dropdown.
+Set `"read_only": true` to display a disabled setting that will not be submitted.
+
 ### `PATCH /settings` (optional)
 
-Accepts a JSON object of `{ key: value }` pairs to update.
+The app proxies updates in a `settings` envelope:
+
+```json
+{"settings": {"COFFEE_MODEL_VARIANT": "large"}}
+```
+
+Services must accept this envelope to work with the admin dashboard. They may
+also accept flat `{ key: value }` objects for direct API callers. Services are
+responsible for validation, applying changes, and persisting their settings.
 
 ## Examples
 

@@ -3,6 +3,7 @@ FROM python:3.13-slim-bookworm AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     COFFEE_TIMEZONE=Europe/Copenhagen \
+    COFFEE_MODEL_VARIANT=large \
     HISTORY_DB=/data/history.sqlite3
 
 WORKDIR /app
@@ -14,7 +15,7 @@ RUN groupadd --gid 10001 coffee \
     && mkdir -p /data \
     && chown coffee:coffee /data
 
-COPY app.py generator.py weights.json ./
+COPY app.py generator.py weights.json weights-large.json ./
 USER coffee
 EXPOSE 8080
 
@@ -27,7 +28,7 @@ FROM base AS test
 USER root
 COPY requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
-COPY phrases.py write_weights.py ./
+COPY phrases.py write_weights.py large_phrases.py large_grammar.py write_large_weights.py ./
 COPY tests ./tests
 USER coffee
 CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]

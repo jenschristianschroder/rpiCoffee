@@ -11,6 +11,7 @@ services:
       - "127.0.0.1:${COFFEE_COMMENTS_PORT:-8004}:8080"
     environment:
       COFFEE_TIMEZONE: ${COFFEE_TIMEZONE:-Europe/Copenhagen}
+      COFFEE_MODEL_VARIANT: ${COFFEE_MODEL_VARIANT:-large}
       HISTORY_DB: /data/history.sqlite3
     volumes:
       - coffee-comments-data:/data
